@@ -1,0 +1,11 @@
+node_modules/
+.wrangler/
+.dev.vars
+dist/
+coverage/
+*.log
+.DS_Store
+apps/admin/public/static/app.css
+apps/admin/public/static/js/htmx.min.js
+test-results/
+playwright-report/
