@@ -6,7 +6,7 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 
 ## 상태
 
-설계 완료, MVP 1 구현 전
+설계 완료, MVP 1 구현 중 (로컬 개발 단계)
 
 ## 문서
 
@@ -14,19 +14,21 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 | --- | --- | --- |
 | [docs/prd.md](docs/prd.md) | 기획자, 팀 전체 | 목적, 사용 흐름, 로드맵, 화면, 완료 기준 |
 | [docs/design.md](docs/design.md) | 개발자 | 시스템 구성, 인증, 렌더링 격리, DB, 라우팅, 테스트 계획 |
+| [docs/ui.md](docs/ui.md) | 개발자, 디자이너 | UI 디자인 가이드 (토큰, 레이아웃, 컴포넌트, 문구) |
 | [docs/decisions.md](docs/decisions.md) | 설계를 다시 검토하는 사람 | 주요 결정과 기각한 대안 |
 
 설계를 바꾸려면 먼저 [docs/decisions.md](docs/decisions.md)에서 해당 결정의 기각 이유를 확인하세요.
 
 ## 기술 스택
 
-Node.js 24, Hono, HTMX, PostgreSQL, Drizzle ORM, Tailwind CSS, Docker
+Cloudflare Workers (무료 플랜), D1, Hono, HTMX, Drizzle ORM, Tailwind CSS. 로컬 도구는 Node.js 24 + pnpm.
 
 ## 구성
 
 ```
-apps/admin    관리 화면 (로그인, 문서 등록·관리)
-apps/render   렌더링 전용 (업로드된 HTML을 격리해서 실행)
+apps/admin    관리 화면 Worker (로그인, 문서 등록·관리)
+apps/render   렌더링 전용 Worker (업로드된 HTML을 격리해서 실행)
 packages/     두 앱이 공유하는 DB 스키마, 인증, 공통 유틸
+scripts/      키 관리 CLI, 점검 스크립트
 docs/         설계 문서
 ```
