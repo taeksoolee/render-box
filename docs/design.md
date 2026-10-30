@@ -41,7 +41,7 @@ render-box/
 └── docs/
 ```
 
-- 각 앱은 Node.js LTS + `@hono/node-server` 프로세스 하나로 실행하고, 자기 호스트만 처리한다. 다른 `Host`로 들어온 요청은 404.
+- 각 앱은 Node.js 24 LTS + `@hono/node-server` 프로세스 하나로 실행하고, 자기 호스트만 처리한다. 다른 `Host`로 들어온 요청은 404.
 - 두 앱은 미들웨어를 공유하지 않는다. 따라서 관리 앱 CSP와 렌더링 CSP가 한 응답에 함께 붙을 수 없다.
 - 공통 로직(세션, 토큰, 검증 함수)만 `packages/`로 공유한다. 보안 헤더 미들웨어는 앱마다 따로 둔다.
 - 리버스 프록시(TLS 종료)가 호스트별로 각 앱에 요청을 전달한다. 프록시는 보안 헤더를 수정하거나 제거하지 않아야 한다 (9.3).
@@ -62,7 +62,7 @@ render-box/
 
 | 영역 | 기술 | 비고 |
 | --- | --- | --- |
-| Runtime | Node.js LTS | |
+| Runtime | Node.js 24 LTS | `.nvmrc`와 `package.json`의 `engines`로 고정 |
 | 저장소 | pnpm workspace 모노레포 | `apps/admin`, `apps/render`, `packages/*` |
 | Web | Hono | 앱마다 별도 인스턴스 |
 | UI | Hono JSX (SSR) + HTMX 2.x | HTMX는 목록 검색·페이지네이션에만 사용 |

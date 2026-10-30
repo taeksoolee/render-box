@@ -20,7 +20,7 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 
 ## 기술 스택
 
-Node.js, Hono, HTMX, PostgreSQL, Drizzle ORM, Tailwind CSS, Docker
+Node.js 24, Hono, HTMX, PostgreSQL, Drizzle ORM, Tailwind CSS, Docker
 
 ## 구성
 
