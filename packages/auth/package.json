@@ -1,0 +1,13 @@
+{
+  "name": "@render-box/auth",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@render-box/db": "workspace:*",
+    "@render-box/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4"
+  }
+}
