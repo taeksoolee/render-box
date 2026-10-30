@@ -45,12 +45,14 @@ app.use("*", adminSecurityHeaders());
 // DEV_MODE only: records what actually reaches the admin host so isolation
 // tests can assert on server-side facts (design.md 10.5). Never enabled in
 // production because DEV_MODE is only set in .dev.vars.
-type DevRecord = { method: string; path: string; site: string | null; dest: string | null; cookie: boolean; status: number };
+type DevRecord = { seq: number; method: string; path: string; site: string | null; dest: string | null; cookie: boolean; status: number };
 const devRequests: DevRecord[] = [];
+let devSeq = 0;
 app.use("*", async (c, next) => {
   await next();
   if (!isDev(c.env) || c.req.path.startsWith("/__dev/")) return;
   devRequests.push({
+    seq: ++devSeq,
     method: c.req.method,
     path: c.req.path,
     site: c.req.header("Sec-Fetch-Site") ?? null,

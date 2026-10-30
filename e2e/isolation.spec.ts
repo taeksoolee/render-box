@@ -24,9 +24,10 @@ test("rendered HTML cannot reach the admin host", async ({ page, context }) => {
   await login(page, "EDITOR");
   const documentKey = await createDocument(page, "격리 테스트", ATTACK);
 
-  type Seen = { method: string; path: string; site: string | null; dest: string | null; cookie: boolean; status: number };
+  type Seen = { seq: number; method: string; path: string; site: string | null; dest: string | null; cookie: boolean; status: number };
   const seen = async () => (await (await context.request.get(`${APP}/__dev/requests`)).json()) as Seen[];
-  const before = (await seen()).length;
+  // The recorder keeps only the latest 500 entries, so filter by sequence.
+  const before = (await seen()).at(-1)?.seq ?? 0;
   const adminPosts: string[] = [];
   context.on("request", (req) => {
     if (req.url().startsWith(`${APP}/html/xxx/delete`)) {
@@ -59,9 +60,9 @@ test("rendered HTML cannot reach the admin host", async ({ page, context }) => {
     .poll(async () => {
       // Top-level GET navigations are allowed by design (messenger links,
       // handoff returns); everything else from another site must be refused.
-      fromRender = (await seen())
-        .slice(before)
-        .filter((r) => r.site === "cross-site" && !(r.dest === "document" && r.method === "GET"));
+      fromRender = (await seen()).filter(
+        (r) => r.seq > before && r.site === "cross-site" && !(r.dest === "document" && r.method === "GET"),
+      );
       return fromRender.length;
     }, { timeout: 5000 })
     .toBeGreaterThanOrEqual(4); // img, script, fetch, beacon
