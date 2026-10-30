@@ -1,0 +1,21 @@
+name = "render-box-admin"
+main = "src/index.tsx"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[assets]
+directory = "./public"
+
+[dev]
+port = 8787
+
+# Production values. Local overrides live in .dev.vars (see .dev.vars.example).
+[vars]
+APP_ORIGIN = "https://render-box-admin.example.workers.dev"
+RENDER_ORIGIN = "https://render-box-render.example.workers.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "render-box"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/db/migrations"

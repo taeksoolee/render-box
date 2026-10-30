@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@source "../";
+@source "../../public/static/js";
+
+/* HTMX loading state; includeIndicatorStyles=false so it is defined here. */
+@custom-variant htmx-request (&.htmx-request, .htmx-request &);
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo",
+    "Malgun Gothic", "맑은 고딕", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "D2Coding", monospace;
+
+  --color-canvas: #F9FAFB;
+  --color-surface: #FFFFFF;
+  --color-line: #E5E7EB;
+  --color-line-input: #878F9C;
+  --color-fg: #111827;
+  --color-fg-muted: #4B5563;
+  --color-fg-subtle: #6B7280;
+
+  --color-primary: #2563EB;
+  --color-primary-hover: #1D4ED8;
+  --color-primary-soft: #EFF6FF;
+  --color-primary-line: #BFDBFE;
+  --color-focus: #2563EB;
+
+  --color-danger: #DC2626;
+  --color-danger-fg: #B91C1C;
+  --color-danger-soft: #FEF2F2;
+  --color-danger-line: #FECACA;
+  --color-warning-fg: #92400E;
+  --color-warning-soft: #FFFBEB;
+  --color-warning-line: #FDE68A;
+  --color-success-fg: #166534;
+  --color-success-soft: #F0FDF4;
+  --color-success-line: #BBF7D0;
+  --color-info-fg: #1E40AF;
+}
+
+@layer base {
+  html { color-scheme: light; }
+  body { @apply bg-canvas text-fg font-sans text-sm antialiased; }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@render-box/admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm build:assets && concurrently -k -n css,worker \"pnpm watch:css\" \"wrangler dev --persist-to ../../.wrangler/state\"",
+    "build:assets": "mkdir -p public/static/js && cp node_modules/htmx.org/dist/htmx.min.js public/static/js/htmx.min.js && pnpm build:css",
+    "build:css": "tailwindcss -i src/styles/app.css -o public/static/app.css --minify",
+    "watch:css": "tailwindcss -i src/styles/app.css -o public/static/app.css --watch"
+  },
+  "dependencies": {
+    "@render-box/auth": "workspace:*",
+    "@render-box/db": "workspace:*",
+    "@render-box/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "concurrently": "^10.0.6",
+    "htmx.org": "^2.0.11",
+    "tailwindcss": "^4.3.3",
+    "wrangler": "^4.156.0"
+  }
+}
