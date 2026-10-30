@@ -1,0 +1,4 @@
+APP_ORIGIN=http://app.localhost:8787
+RENDER_ORIGIN=http://render.localhost:8788
+DEV_MODE=1
+HANDOFF_SECRET=replace-with-random-secret

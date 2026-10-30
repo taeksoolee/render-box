@@ -1,0 +1,19 @@
+{
+  "name": "@render-box/render",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --persist-to ../../.wrangler/state"
+  },
+  "dependencies": {
+    "@render-box/auth": "workspace:*",
+    "@render-box/db": "workspace:*",
+    "@render-box/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "wrangler": "^4.156.0"
+  }
+}
