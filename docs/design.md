@@ -27,17 +27,44 @@
 
 ## 1.2 애플리케이션
 
-- Node.js LTS + `@hono/node-server` 단일 프로세스로 실행한다.
-- 요청의 `Host` 헤더로 관리 앱과 렌더링 앱을 나누어 라우팅한다. 알 수 없는 Host는 404.
-- 두 앱의 미들웨어 체인은 **완전히 분리**한다. 관리 앱 CSP와 렌더링 CSP가 한 응답에 함께 붙으면 안 된다 (7.3).
-- 리버스 프록시(TLS 종료) 뒤에서 실행한다. 프록시는 보안 헤더를 수정하거나 제거하지 않아야 한다 (9.3).
+호스트마다 **별도 애플리케이션**으로 만든다. 하나의 저장소 안에서 pnpm workspace 모노레포로 관리한다 ([decisions.md](decisions.md) D-25).
+
+```
+render-box/
+├── apps/
+│   ├── admin/      # APP_ORIGIN: 로그인, 문서 관리 화면, 키 관리 CLI
+│   └── render/     # RENDER_ORIGIN: 렌더링, 핸드오프 수신
+├── packages/
+│   ├── db/         # Drizzle 스키마, 마이그레이션, DB 클라이언트
+│   ├── auth/       # 세션 조회·발급, 핸드오프 토큰 서명·검증
+│   └── shared/     # 설정 로딩, Fetch Metadata 미들웨어, 리다이렉트 검증, document_key 형식
+└── docs/
+```
+
+- 각 앱은 Node.js LTS + `@hono/node-server` 프로세스 하나로 실행하고, 자기 호스트만 처리한다. 다른 `Host`로 들어온 요청은 404.
+- 두 앱은 미들웨어를 공유하지 않는다. 따라서 관리 앱 CSP와 렌더링 CSP가 한 응답에 함께 붙을 수 없다.
+- 공통 로직(세션, 토큰, 검증 함수)만 `packages/`로 공유한다. 보안 헤더 미들웨어는 앱마다 따로 둔다.
+- 리버스 프록시(TLS 종료)가 호스트별로 각 앱에 요청을 전달한다. 프록시는 보안 헤더를 수정하거나 제거하지 않아야 한다 (9.3).
+
+### DB 권한 분리
+
+두 앱은 같은 PostgreSQL을 쓰되, 서로 다른 DB 사용자로 접속한다. 렌더링 앱은 신뢰할 수 없는 HTML을 다루는 쪽이므로 최소 권한만 준다.
+
+| 테이블 | admin 앱 (`rb_admin`) | render 앱 (`rb_render`) |
+| --- | --- | --- |
+| `access_keys` | 읽기·쓰기 | 읽기 |
+| `sessions` | 읽기·쓰기 | 읽기·쓰기 (렌더링 세션 발급·갱신) |
+| `html_documents` | 읽기·쓰기 | **읽기만** |
+
+마이그레이션은 `packages/db`에 두고, 배포 시 별도 명령(`pnpm db:migrate`)을 마이그레이션 전용 DB 사용자로 실행한다. 두 앱 모두 실행 중에는 스키마를 변경하지 않는다.
 
 ## 1.3 기술 스택
 
 | 영역 | 기술 | 비고 |
 | --- | --- | --- |
 | Runtime | Node.js LTS | |
-| Web | Hono | Host 기반 라우팅 |
+| 저장소 | pnpm workspace 모노레포 | `apps/admin`, `apps/render`, `packages/*` |
+| Web | Hono | 앱마다 별도 인스턴스 |
 | UI | Hono JSX (SSR) + HTMX 2.x | HTMX는 목록 검색·페이지네이션에만 사용 |
 | CSS | Tailwind CSS | 빌드 시 정적 CSS 생성 |
 | DB | PostgreSQL | |
@@ -525,7 +552,7 @@ opaque origin에서는 `localStorage`나 `sessionStorage`에 접근하면 예외
 
 - 인증을 본문 파싱보다 먼저 수행한다. 그래야 인증되지 않은 요청이 서버에 11MB를 버퍼링시키지 못한다.
 - 보안 헤더 미들웨어를 가장 바깥에 두어 413·403·302·오류 응답에도 헤더가 붙게 한다.
-- 두 호스트의 체인은 Host 분기 이후에 각각 구성하고 서로 공유하지 않는다. 따라서 모든 응답의 CSP 헤더는 정확히 1개다.
+- 두 체인은 서로 다른 앱에 있으므로 공유될 수 없다. 따라서 모든 응답의 CSP 헤더는 정확히 1개다.
 
 ## 7.4 관리 호스트 보안 헤더
 
@@ -602,18 +629,20 @@ Strict-Transport-Security: max-age=31536000
 
 ## 9.1 환경 변수
 
-| 변수 | 설명 |
-| --- | --- |
-| `APP_ORIGIN` | 관리 호스트 출처 |
-| `RENDER_ORIGIN` | 렌더링 호스트 출처 |
-| `DATABASE_URL` | PostgreSQL 연결 |
-| `HANDOFF_SECRET` | 핸드오프 토큰 서명 키 (32바이트 이상 난수) |
-| `TRUST_PROXY` | 신뢰할 프록시 (운영 필수) |
-| `NODE_ENV` | `production` / `development` |
+| 변수 | admin | render | 설명 |
+| --- | :---: | :---: | --- |
+| `APP_ORIGIN` | O | O | 관리 호스트 출처 |
+| `RENDER_ORIGIN` | O | O | 렌더링 호스트 출처 |
+| `DATABASE_URL` | O | O | PostgreSQL 연결. 앱마다 다른 DB 사용자 (1.2) |
+| `HANDOFF_SECRET` | O | O | 핸드오프 토큰 서명 키 (32바이트 이상 난수). 두 앱이 같은 값을 쓴다 |
+| `TRUST_PROXY` | O | - | 신뢰할 프록시 (운영 필수, 로그인 속도 제한용) |
+| `PORT` | O | O | 수신 포트 |
+| `NODE_ENV` | O | O | `production` / `development` |
 
 ## 9.2 로컬 개발
 
-- 호스트는 `http://app.localhost:3000`과 `http://render.localhost:3000`을 쓴다. Chrome과 Firefox는 `*.localhost`를 루프백 주소로 해석한다.
+- 호스트는 `http://app.localhost:3000`(admin)과 `http://render.localhost:3001`(render)을 쓴다. Chrome과 Firefox는 `*.localhost`를 루프백 주소로 해석한다. 포트가 달라도 사이트(site) 판정에는 영향이 없다.
+- `pnpm dev`로 두 앱을 함께 실행하고, PostgreSQL은 `docker compose`로 띄운다.
 - `NODE_ENV=development`일 때만 다음을 완화한다.
   - 쿠키 이름의 `__Host-` 접두사를 생략한다.
   - 쿠키의 `Secure` 속성을 생략한다.
@@ -622,8 +651,9 @@ Strict-Transport-Security: max-age=31536000
 
 ## 9.3 배포
 
-- Docker 이미지 하나로 컨테이너 하나를 띄우고, PostgreSQL과 함께 운영한다.
-- 리버스 프록시가 TLS를 종료하고 두 호스트의 요청을 같은 컨테이너로 전달한다.
+- 앱마다 Docker 이미지를 하나씩 만들고(`apps/admin/Dockerfile`, `apps/render/Dockerfile`), PostgreSQL과 함께 운영한다.
+- 리버스 프록시가 TLS를 종료하고 `APP_ORIGIN`은 admin 컨테이너로, `RENDER_ORIGIN`은 render 컨테이너로 전달한다.
+- 배포 순서: 마이그레이션 → admin → render. 두 앱은 같은 스키마 버전을 전제로 하므로 스키마 변경이 있으면 함께 배포한다.
 - 프록시 요구사항:
   - 애플리케이션이 붙인 보안 헤더를 수정하거나 제거하지 않는다. nginx `add_header`가 상위 헤더를 덮어쓰지 않는지 확인한다.
   - 관리 호스트 응답을 압축하지 않는다 (7.4).

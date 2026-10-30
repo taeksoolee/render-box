@@ -21,3 +21,12 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 ## 기술 스택
 
 Node.js, Hono, HTMX, PostgreSQL, Drizzle ORM, Tailwind CSS, Docker
+
+## 구성
+
+```
+apps/admin    관리 화면 (로그인, 문서 등록·관리)
+apps/render   렌더링 전용 (업로드된 HTML을 격리해서 실행)
+packages/     두 앱이 공유하는 DB 스키마, 인증, 공통 유틸
+docs/         설계 문서
+```
