@@ -32,3 +32,25 @@ packages/     두 앱이 공유하는 DB 스키마, 인증, 공통 유틸
 scripts/      키 관리 CLI, 점검 스크립트
 docs/         설계 문서
 ```
+
+## 로컬 개발
+
+Node.js 24와 pnpm이 필요합니다. Cloudflare 계정은 필요 없습니다(로컬 D1 시뮬레이션).
+
+```sh
+nvm use                 # .nvmrc → Node 24
+pnpm install
+pnpm setup:local        # .dev.vars 생성(공유 HANDOFF_SECRET) + 로컬 D1 마이그레이션
+pnpm key create --name 김기획 --role EDITOR
+pnpm key create --name 박개발 --role VIEWER
+pnpm dev                # 관리 http://app.localhost:8787, 렌더링 http://render.localhost:8788
+```
+
+`*.localhost` 주소는 Chrome·Firefox에서 바로 열립니다. 발급된 키로 http://app.localhost:8787 에 로그인하세요.
+
+| 명령 | 설명 |
+| --- | --- |
+| `pnpm key list` / `revoke <prefix>` / `set-role <prefix> VIEWER` | 키 관리 (`--remote`를 붙이면 운영 D1) |
+| `pnpm test` | 단위 테스트 (Vitest) |
+| `RB_EDITOR_KEY=… RB_VIEWER_KEY=… pnpm test:e2e` | 브라우저 테스트 (Playwright, `pnpm dev` 실행 중이어야 함) |
+| `pnpm typecheck` | 타입 검사 |

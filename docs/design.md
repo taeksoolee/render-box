@@ -450,6 +450,7 @@ Strict-Transport-Security: max-age=31536000
 
 - 렌더링 응답에는 `Set-Cookie`를 넣지 않는다. 세션을 발급하는 `/__auth`만 예외다.
 - 로컬 개발(http)에서는 `Strict-Transport-Security`를 생략한다.
+- 로컬 개발(`DEV_MODE=1`)에서는 `https:`를 허용하는 모든 지시어에 `http:`도 함께 허용한다. 로컬 두 호스트가 http라서, 그렇지 않으면 격리 테스트의 요청이 CSP에서 먼저 막혀 Fetch Metadata 검사를 검증할 수 없다. 운영 정책은 바뀌지 않는다.
 
 ### 정책 설명
 
@@ -657,7 +658,7 @@ Content-Security-Policy:
   frame-src 'none';
   object-src 'none';
   base-uri 'none';
-  form-action 'self';
+  form-action 'self' <RENDER_ORIGIN>;
   frame-ancestors 'none'
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Resource-Policy: same-origin
@@ -668,6 +669,7 @@ Cache-Control: no-store, no-transform
 Strict-Transport-Security: max-age=31536000
 ```
 
+- `form-action`에 `RENDER_ORIGIN`을 넣는다. 브라우저는 폼 제출 뒤 이어지는 리다이렉트에도 `form-action`을 적용하는데, 로그인 폼은 렌더링 호스트 핸드오프(3.4)로 리다이렉트되기 때문이다. 빠뜨리면 Chrome이 로그인 후 이동을 막는다(구현 중 확인).
 - 관리 화면 응답은 **압축하지 않는다** ([decisions.md](decisions.md) D-14).
   - Cloudflare 엣지는 HTML 응답을 자동으로 압축한다.
   - `Cache-Control: no-transform`으로 압축을 막는다.
