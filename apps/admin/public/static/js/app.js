@@ -5,6 +5,8 @@
 
   var MAX_BYTES = 10 * 1024 * 1024;
   var MAX_LINKS = 10;
+  var UNREADABLE =
+    "파일을 읽지 못했습니다. 선택한 뒤에 파일이 수정·이동되었거나, iCloud·구글 드라이브처럼 내 컴퓨터에 내려받지 않은 파일일 수 있습니다. 파일을 다시 선택해 주세요.";
 
   function $(sel, root) {
     return (root || document).querySelector(sel);
@@ -211,7 +213,11 @@
       reader.onload = function () {
         resolve(reader.result);
       };
-      reader.onerror = reject;
+      reader.onerror = function () {
+        var err = new Error("unreadable");
+        err.file = file;
+        reject(err);
+      };
       reader.readAsDataURL(file);
     });
   }
@@ -418,6 +424,12 @@
         setState("selected");
         announce(file.name + " 파일을 선택했습니다");
         if (!isEdit) autofillTitle(decoded.text, file.name.replace(/\.html?$/i, ""));
+      }, function () {
+        // NotReadableError: the file changed or moved after it was picked, or
+        // it is a cloud-drive placeholder that is not on this disk.
+        if (fileInput) fileInput.value = "";
+        setPending(null);
+        setState("error", UNREADABLE);
       });
     }
 
@@ -571,7 +583,14 @@
         })
         .catch(function (err) {
           resetSubmit();
-          if (err.message === "too_large_inlined") {
+          if (err.message === "unreadable") {
+            Object.keys(imageFiles).forEach(function (src) {
+              if (imageFiles[src] === err.file) delete imageFiles[src];
+            });
+            renderImages();
+            imageMsg.textContent = err.file.name + " " + UNREADABLE;
+            $("[data-image-bulk]", images).focus();
+          } else if (err.message === "too_large_inlined") {
             imageMsg.textContent =
               "이미지를 넣으니 10MB를 넘습니다. (" + formatSize(err.size) + ") 이미지 크기를 줄여서 다시 선택해 주세요.";
             $("[data-image-bulk]", images).focus();

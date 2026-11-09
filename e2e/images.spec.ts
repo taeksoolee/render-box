@@ -60,3 +60,50 @@ test("local <img src> files are inlined; unchosen ones become placeholders", asy
   expect(source).toContain(`<!-- <img src="commented.png"> -->`);
   expect(source).toContain(`'<img src="' + 'built.png">'`);
 });
+
+// NotReadableError: the file changed or moved after it was picked, or it is a
+// cloud-drive placeholder. The form must say so instead of hanging.
+test("unreadable files show a retry message", async ({ page }) => {
+  await page.addInitScript(() => {
+    const broken = (f: Blob) => f instanceof File && f.name.startsWith("broken");
+    const arrayBuffer = File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer = function () {
+      return broken(this) ? Promise.reject(new DOMException("x", "NotReadableError")) : arrayBuffer.call(this);
+    };
+    const readAsDataURL = FileReader.prototype.readAsDataURL;
+    FileReader.prototype.readAsDataURL = function (f: Blob) {
+      if (!broken(f)) return readAsDataURL.call(this, f);
+      setTimeout(() => this.onerror?.(new ProgressEvent("error")));
+    };
+  });
+  await login(page, "EDITOR");
+  await page.goto(`${APP}/html/new`);
+
+  await page.locator("#html-file").setInputFiles({ name: "broken.html", mimeType: "text/html", buffer: Buffer.from(HTML) });
+  await expect(page.getByText("파일을 읽지 못했습니다.")).toBeVisible();
+  await expect(page.locator("[data-dropzone]")).toHaveAttribute("data-state", "error");
+
+  await page.locator("#html-file").setInputFiles({ name: "doc.html", mimeType: "text/html", buffer: Buffer.from(HTML) });
+  await page.getByLabel("images/logo.png 이미지 파일 선택").setInputFiles(png("broken.png"));
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("broken.png 파일을 읽지 못했습니다.")).toBeVisible();
+  // The unreadable file is dropped so the row asks again; nothing was saved.
+  await expect(page.locator("[data-image-row]").first()).toContainText("선택하지 않으면 빈 상자로 표시됩니다");
+  await expect(page).toHaveURL(`${APP}/html/new`);
+  await expect(page.getByRole("button", { name: "저장" })).toBeEnabled();
+});
+
+test("image edited on disk after picking is reported (real Chromium error)", async ({ page, browserName }, info) => {
+  test.skip(browserName !== "chromium", "Chromium raises NotReadableError for files changed after picking");
+  const { writeFileSync } = await import("node:fs");
+  const path = info.outputPath("logo.png");
+  writeFileSync(path, PNG);
+
+  await login(page, "EDITOR");
+  await page.goto(`${APP}/html/new`);
+  await page.locator("#html-file").setInputFiles({ name: "doc.html", mimeType: "text/html", buffer: Buffer.from(HTML) });
+  await page.getByLabel("images/logo.png 이미지 파일 선택").setInputFiles(path);
+  writeFileSync(path, Buffer.concat([PNG, PNG]));
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText("logo.png 파일을 읽지 못했습니다.")).toBeVisible();
+});
