@@ -1,9 +1,9 @@
-// Writes .dev.vars for both apps with a shared random HANDOFF_SECRET.
+// Writes .dev.vars for each app; admin and render share a random HANDOFF_SECRET.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
 const secret = randomBytes(32).toString("base64url");
-for (const app of ["admin", "render"]) {
+for (const app of ["admin", "render", "mcp"]) {
   const target = `apps/${app}/.dev.vars`;
   if (existsSync(target)) {
     console.log(`${target} already exists, skipped`);

@@ -7,9 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @render-box/admin --filter @render-box/render dev",
+    "dev": "tsx scripts/dev.ts",
     "test": "vitest run",
-    "typecheck": "for p in apps/admin apps/render packages/auth packages/db packages/shared; do tsc -p $p --noEmit || exit 1; done",
+    "typecheck": "for p in apps/admin apps/render apps/mcp packages/auth packages/db packages/documents packages/shared; do tsc -p $p --noEmit || exit 1; done",
     "db:generate": "pnpm --filter @render-box/db generate",
     "db:migrate:local": "pnpm --filter @render-box/admin exec wrangler d1 migrations apply DB --local --persist-to ../../.wrangler/state",
     "key": "tsx scripts/key.ts",
@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261030.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@playwright/test": "^1.64.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
