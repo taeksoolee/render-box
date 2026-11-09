@@ -1,6 +1,6 @@
 import { createSession, loadSession, sessionCookieName, sessionCookieOptions, verifyHandoff } from "@render-box/auth";
 import { blobStream, createDb, htmlDocuments } from "@render-box/db";
-import { fetchMetadataGuard, isDocumentKey, safeRedirectPath } from "@render-box/shared";
+import { canonicalOrigin, fetchMetadataGuard, isDocumentKey, safeRedirectPath } from "@render-box/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -11,6 +11,7 @@ import { injectStorageShim } from "./storage-shim";
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", renderSecurityHeaders());
+app.use("*", canonicalOrigin((env: Env) => env.RENDER_ORIGIN));
 app.use("*", fetchMetadataGuard({ skip: (path) => path === "/healthz" }));
 
 app.get("/healthz", (c) => c.text("ok"));

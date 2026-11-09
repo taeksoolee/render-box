@@ -9,7 +9,7 @@ import {
   signHandoff,
 } from "@render-box/auth";
 import { blobStream, createDb, deleteBlobStatements, MAX_HTML_BYTES, type DocumentLink } from "@render-box/db";
-import { fetchMetadataGuard, generateDocumentKey, isDocumentKey, safeRedirectPath } from "@render-box/shared";
+import { canonicalOrigin, fetchMetadataGuard, generateDocumentKey, isDocumentKey, safeRedirectPath } from "@render-box/shared";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -41,6 +41,7 @@ const LOGIN_NEXT_PREFIXES = ["/html", "/auth/render"];
 const app = new Hono<AppEnv>();
 
 app.use("*", adminSecurityHeaders());
+app.use("*", canonicalOrigin((env: AppEnv["Bindings"]) => env.APP_ORIGIN));
 
 // DEV_MODE only: records what actually reaches the admin host so isolation
 // tests can assert on server-side facts (design.md 10.5). Never enabled in
