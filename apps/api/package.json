@@ -1,5 +1,5 @@
 {
-  "name": "@render-box/mcp",
+  "name": "@render-box/api",
   "private": true,
   "type": "module",
   "scripts": {

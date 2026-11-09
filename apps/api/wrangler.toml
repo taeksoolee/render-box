@@ -1,4 +1,4 @@
-name = "render-box-mcp"
+name = "render-box-api"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 workers_dev = true
@@ -11,7 +11,7 @@ inspector_port = 9232
 [vars]
 APP_ORIGIN = "https://render-box-admin.example.workers.dev"
 RENDER_ORIGIN = "https://render-box-render.example.workers.dev"
-MCP_ORIGIN = "https://render-box-mcp.example.workers.dev"
+API_ORIGIN = "https://render-box-api.example.workers.dev"
 
 [[d1_databases]]
 binding = "DB"

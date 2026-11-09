@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "test": "vitest run",
-    "typecheck": "for p in apps/admin apps/render apps/mcp packages/auth packages/db packages/documents packages/shared; do tsc -p $p --noEmit || exit 1; done",
+    "typecheck": "for p in apps/admin apps/render apps/api packages/auth packages/db packages/documents packages/shared; do tsc -p $p --noEmit || exit 1; done",
     "db:generate": "pnpm --filter @render-box/db generate",
     "db:migrate:local": "pnpm --filter @render-box/admin exec wrangler d1 migrations apply DB --local --persist-to ../../.wrangler/state",
     "key": "tsx scripts/key.ts",

@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 const APPS = [
   { name: "render", url: "http://render.localhost:8788/healthz" },
   { name: "admin", url: "http://app.localhost:8787/healthz" },
-  { name: "mcp", url: "http://mcp.localhost:8789/healthz" },
+  { name: "api", url: "http://api.localhost:8789/healthz" },
 ];
 
 const children: ChildProcess[] = [];
@@ -49,4 +49,4 @@ for (const app of APPS) {
   await waitFor(app.url, child);
   console.log(`[dev] ${app.name} ready`);
 }
-console.log("[dev] admin http://app.localhost:8787 · render http://render.localhost:8788 · mcp http://mcp.localhost:8789/mcp");
+console.log("[dev] admin http://app.localhost:8787 · render http://render.localhost:8788 · api http://api.localhost:8789 (MCP /mcp, REST /api/v1)");

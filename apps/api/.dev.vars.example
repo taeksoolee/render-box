@@ -1,4 +1,4 @@
 APP_ORIGIN=http://app.localhost:8787
 RENDER_ORIGIN=http://render.localhost:8788
-MCP_ORIGIN=http://mcp.localhost:8789
+API_ORIGIN=http://api.localhost:8789
 DEV_MODE=1

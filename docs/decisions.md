@@ -355,8 +355,25 @@ AI로 HTML을 만든 뒤 파일로 내려받아 다시 올리는 과정을 없�
 | OAuth 인증 | 이미 개인 접근 키가 있다. OAuth 서버를 따로 운영할 이유가 없다 |
 | 삭제 도구 제공 | 되돌릴 수 없다. AI가 잘못 판단해도 문서가 사라지지 않게 웹 화면에서만 삭제한다 |
 
-- **결과:** `apps/mcp`가 `POST /mcp`로 `upload_html`, `update_html`, `list_html`, `get_html`을 제공한다. 문서 검증·저장 코드는 `packages/documents`로 옮겨 admin과 함께 쓴다 (design.md 11).
+- **결과:** `apps/mcp`(D-33에서 `apps/api`로 이름 변경)가 `POST /mcp`로 `upload_html`, `update_html`, `list_html`, `get_html`을 제공한다. 문서 검증·저장 코드는 `packages/documents`로 옮겨 admin과 함께 쓴다 (design.md 11).
 - **트레이드오프:**
   - AI가 HTML 전체를 도구 호출 인자로 다시 출력해야 하므로 토큰과 시간이 든다. 큰 문서는 웹 화면이 낫다. MCP 업로드 한도는 1MB다.
   - 키가 클라이언트 설정 파일에 평문으로 남는다.
   - 회사 보안 프로그램(정보 유출 방지·네트워크 감시)이 MCP 통신도 똑같이 감시·차단할 수 있다. 보안 정책을 우회하는 수단이 아니며, 운영 전에 보안 담당자의 승인을 받는다.
+
+## D-33. REST API: MCP와 같은 Worker(`apps/api`), HTML은 본문 그대로
+
+스크립트·CI에서 curl 한 줄로 올리고 렌더링 URL을 받는다. MCP는 HTML을 JSON 안에 넣어야 해서 1MB로 제한했지만, REST는 파일을 본문 그대로 받으므로 웹과 같은 10MB까지 올릴 수 있다.
+
+| 대안 | 기각 이유 |
+| --- | --- |
+| 관리 앱 `PUT /uploads`에 Bearer 인증 추가 | 쿠키·CSRF를 쓰는 앱에 다른 인증 방식이 섞인다 (D-32와 같은 이유) |
+| REST용 Worker를 따로 둠 | 인증·문서 처리 코드가 MCP와 같다. 배포 대상만 늘어난다 |
+| JSON 본문(`{"html": "..."}`) | 큰 JSON 파싱에 CPU 시간이 든다. 본문 그대로 받으면 디코딩 없이 청크로 저장된다 |
+| multipart/form-data | 파싱하려면 본문 전체를 메모리에 올린다. 제목 등은 쿼리 파라미터로 충분하다 |
+| 삭제 API 제공 | 스크립트 실수로 되돌릴 수 없는 삭제가 일어난다. 웹 화면에서만 삭제한다 |
+
+- **결과:** `apps/mcp`를 `apps/api`로 바꾸고 `/api/v1`을 추가했다. 문서 처리는 `src/service.ts` 하나를 MCP 도구와 REST가 함께 쓴다 (design.md 11.4).
+- **트레이드오프:**
+  - 제목·설명·링크를 쿼리 파라미터로 받으므로 URL 인코딩이 필요하다 (curl은 `--url-query`).
+  - D-32와 같이 회사 보안 프로그램의 감시 대상이며, 정책을 우회하는 수단이 아니다.

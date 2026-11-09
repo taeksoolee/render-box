@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Runs against `pnpm dev` (admin :8787, render :8788). Keys come from
+// Runs against `pnpm dev` (admin :8787, render :8788, api :8789). Keys come from
 // RB_EDITOR_KEY / RB_VIEWER_KEY (create them with `pnpm key create`).
 // WebKit stands in for Safari. One worker: locally both Workers share one
 // SQLite file and parallel writes intermittently fail with SQLITE_BUSY-like

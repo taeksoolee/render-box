@@ -28,10 +28,10 @@ Cloudflare Workers (무료 플랜), D1, Hono, HTMX, Drizzle ORM, Tailwind CSS. �
 ```
 apps/admin        관리 화면 Worker (로그인, 문서 등록·관리)
 apps/render       렌더링 전용 Worker (업로드된 HTML을 격리해서 실행)
-apps/mcp          AI 클라이언트용 MCP 서버 Worker (AI가 직접 올리기)
+apps/api          키로 쓰는 API Worker: MCP(AI가 직접 올리기) + REST(스크립트·CI)
 packages/db       DB 스키마, 마이그레이션, 청크 저장
 packages/auth     키·세션·핸드오프, 로그인 실패 제한
-packages/documents 문서 검증·업로드·조회 (admin과 mcp가 공유)
+packages/documents 문서 검증·업로드·조회 (admin과 api가 공유)
 packages/shared   공통 미들웨어와 유틸
 scripts/      키 관리 CLI, 점검 스크립트
 docs/         설계 문서
@@ -47,7 +47,7 @@ pnpm install
 pnpm setup:local        # .dev.vars 생성(공유 HANDOFF_SECRET) + 로컬 D1 마이그레이션
 pnpm key create --name 김기획 --role EDITOR
 pnpm key create --name 박개발 --role VIEWER
-pnpm dev                # 렌더링 :8788 → 관리 :8787 → MCP :8789 순서로 실행
+pnpm dev                # 렌더링 :8788 → 관리 :8787 → API :8789 순서로 실행
 ```
 
 `*.localhost` 주소는 Chrome·Firefox에서 바로 열립니다. 발급된 키로 http://app.localhost:8787 에 로그인하세요.
@@ -67,7 +67,7 @@ Claude Code 같은 MCP 클라이언트에 render-box를 연결하면 "이 HTML r
 
 ```sh
 # 로컬
-claude mcp add --transport http render-box http://mcp.localhost:8789/mcp \
+claude mcp add --transport http render-box http://api.localhost:8789/mcp \
   --header "Authorization: Bearer rb_..."
 ```
 
@@ -78,6 +78,34 @@ claude mcp add --transport http render-box http://mcp.localhost:8789/mcp \
 | `list_html` | 문서 찾기 |
 | `get_html` | 문서 정보와 HTML 원본 |
 
-- HTML은 1MB까지 올릴 수 있습니다. 더 큰 파일은 웹 화면에서 올리세요.
+- HTML은 1MB까지 올릴 수 있습니다. 더 큰 파일은 웹 화면이나 REST API로 올리세요.
 - 이미지는 HTML 안에 base64로 넣거나 https 주소를 써야 합니다.
 - 삭제는 웹 화면에서만 할 수 있습니다.
+
+## 스크립트에서 올리기 (REST API)
+
+같은 접근 키로 curl, CI 등에서 씁니다. HTML 파일을 본문에 그대로 보내므로 웹 화면과 같이 10MB까지 올릴 수 있습니다.
+
+```sh
+# 새로 올리기 → 201, render_url
+curl http://api.localhost:8789/api/v1/html \
+  -H "Authorization: Bearer rb_..." \
+  --url-query "title=회원가입 화면" \
+  --url-query "link=기획서|https://example.com/spec" \
+  --data-binary @signup.html
+
+# HTML만 바꾸기 (주소 유지). If-Match는 선택: 그 사이 누가 고쳤으면 412
+curl -X PUT http://api.localhost:8789/api/v1/html/<문서키>/source \
+  -H "Authorization: Bearer rb_..." -H 'If-Match: "1"' --data-binary @signup.html
+```
+
+| 요청 | 권한 | 설명 |
+| --- | --- | --- |
+| `POST /api/v1/html?title=&description=&link=` | EDITOR | 본문 = HTML 원본. `link`는 여러 번, `이름\|주소` 또는 주소만 |
+| `PUT /api/v1/html/:key/source` | EDITOR | HTML 교체 |
+| `PATCH /api/v1/html/:key` | EDITOR | JSON `{title?, description?, links?}`. 빠진 항목은 유지 |
+| `GET /api/v1/html?q=&page=` | 전체 | 목록 (20개씩) |
+| `GET /api/v1/html/:key` | 전체 | 문서 정보, `ETag`에 버전 |
+| `GET /api/v1/html/:key/source` | 전체 | HTML 원본 (올린 바이트 그대로) |
+
+오류는 `{"error": {"code", "message"}}` 형식입니다. 삭제는 여기서도 할 수 없습니다.

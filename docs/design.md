@@ -38,7 +38,7 @@
 | --- | --- | --- | --- | --- |
 | 관리 | `apps/admin` | `APP_ORIGIN` | `https://render-box-admin.<계정>.workers.dev` | `http://app.localhost:8787` |
 | 렌더링 | `apps/render` | `RENDER_ORIGIN` | `https://render-box-render.<계정>.workers.dev` | `http://render.localhost:8788` |
-| MCP | `apps/mcp` | `MCP_ORIGIN` | `https://render-box-mcp.<계정>.workers.dev` | `http://mcp.localhost:8789` |
+| API (MCP·REST) | `apps/api` | `API_ORIGIN` | `https://render-box-api.<계정>.workers.dev` | `http://api.localhost:8789` |
 
 - 두 호스트는 **출처(origin)가 다르다.** 그래서 브라우저의 동일 출처 정책(SOP)이 렌더링 문서와 관리 화면을 기본적으로 분리한다.
 - `workers.dev`는 Public Suffix List에 등록되어 있어 하위 주소끼리도 **다른 사이트(site)**로 취급된다. 렌더링 문서가 관리 호스트로 보내는 하위 요청에는 `SameSite=Lax` 쿠키가 실리지 않는다.
@@ -56,11 +56,11 @@ render-box/
 │   ├── admin/      # Worker: 로그인, 문서 관리 화면, 업로드
 │   │   └── public/ # 정적 파일 (CSS, JS) — Workers Static Assets
 │   ├── render/     # Worker: 렌더링, 핸드오프 수신
-│   └── mcp/        # Worker: AI 클라이언트용 MCP 서버 (11장)
+│   └── api/        # Worker: 키로 쓰는 MCP 서버와 REST API (11장)
 ├── packages/
 │   ├── db/         # Drizzle 스키마, D1 마이그레이션, 청크 저장
 │   ├── auth/       # 세션, 핸드오프 토큰, 키 해시·조회, 로그인 실패 제한
-│   ├── documents/  # 문서 입력 검증, 업로드 저장, 문서 조회·등록·수정 (admin과 mcp가 공유)
+│   ├── documents/  # 문서 입력 검증, 업로드 저장, 문서 조회·등록·수정 (admin과 api가 공유)
 │   └── shared/     # Fetch Metadata 미들웨어, 리다이렉트 검증, 정식 주소 이동, document_key
 ├── scripts/        # 키 관리 CLI, 헤더 점검 스크립트
 └── docs/
@@ -68,7 +68,7 @@ render-box/
 
 - 각 앱은 독립된 Worker이며 미들웨어를 공유하지 않는다. 따라서 관리 앱 CSP와 렌더링 CSP가 한 응답에 함께 붙을 수 없다.
 - 공통 로직(세션, 토큰, 검증 함수)만 `packages/`로 공유한다. 보안 헤더 미들웨어는 앱마다 따로 둔다.
-- 세 Worker는 같은 D1 데이터베이스를 바인딩한다. mcp 앱은 admin과 같은 범위(문서·업로드·키)를 읽고 쓰며 세션은 쓰지 않는다. render 앱은 `html_documents`, `html_chunks`, `access_keys`를 읽기만 하고, `sessions`에만 쓴다. 다만 D1 바인딩에는 읽기 전용 권한을 줄 수 없으므로, 이 제한은 코드 수준의 약속이다.
+- 세 Worker는 같은 D1 데이터베이스를 바인딩한다. api 앱은 admin과 같은 범위(문서·업로드·키)를 읽고 쓰며 세션은 쓰지 않는다. render 앱은 `html_documents`, `html_chunks`, `access_keys`를 읽기만 하고, `sessions`에만 쓴다. 다만 D1 바인딩에는 읽기 전용 권한을 줄 수 없으므로, 이 제한은 코드 수준의 약속이다.
 
 ## 1.4 기술 스택
 
@@ -746,7 +746,7 @@ UI 디자인 가이드(토큰, 레이아웃, 컴포넌트, 문구)는 [ui.md](ui
 | `RENDER_ORIGIN` | 변수 | O | O | 렌더링 호스트 출처 |
 | `HANDOFF_SECRET` | 시크릿 | O | O | 핸드오프 토큰 서명 키 (32바이트 이상 난수). 두 앱이 같은 값을 쓴다 |
 | `DEV_MODE` | 변수 | O | O | 로컬에서만 `1` (9.2) |
-| `MCP_ORIGIN` | 변수 | - | - | MCP 호스트 출처. mcp 앱만 쓴다 (mcp 앱은 `DB`, `APP_ORIGIN`, `RENDER_ORIGIN`도 쓰고 `HANDOFF_SECRET`은 쓰지 않는다) |
+| `API_ORIGIN` | 변수 | - | - | API 호스트 출처. api 앱만 쓴다 (api 앱은 `DB`, `APP_ORIGIN`, `RENDER_ORIGIN`도 쓰고 `HANDOFF_SECRET`은 쓰지 않는다) |
 
 - 운영 시크릿은 `wrangler secret put`으로 등록한다.
 - 로컬에서는 `.dev.vars` 파일을 쓰고, 이 파일은 저장소에 커밋하지 않는다.
@@ -757,10 +757,10 @@ UI 디자인 가이드(토큰, 레이아웃, 컴포넌트, 문구)는 [ui.md](ui
 pnpm install
 pnpm db:migrate:local      # 로컬 D1에 마이그레이션 적용
 pnpm key create --local --name 개발자 --role EDITOR
-pnpm dev                   # render(:8788) → admin(:8787) → mcp(:8789) 순서로 실행
+pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순서로 실행
 ```
 
-- 주소: `http://app.localhost:8787`, `http://render.localhost:8788`, `http://mcp.localhost:8789/mcp`. Chrome과 Firefox는 `*.localhost`를 루프백 주소로 해석한다.
+- 주소: `http://app.localhost:8787`, `http://render.localhost:8788`, `http://api.localhost:8789` (MCP `/mcp`, REST `/api/v1`). Chrome과 Firefox는 `*.localhost`를 루프백 주소로 해석한다.
 - 세 Worker가 같은 로컬 D1을 보도록 `wrangler dev --persist-to ../../.wrangler/state`로 상태 디렉터리를 공유한다.
 - 동시에 띄우면 같은 SQLite 파일을 함께 열다가 `SQLITE_BUSY`로 실패한다. `scripts/dev.ts`가 앞 앱의 `/healthz`가 응답한 뒤 다음 앱을 띄운다. 디버거 포트도 앱마다 고정한다(9230~9232).
 - `DEV_MODE=1`일 때만 다음을 완화한다.
@@ -944,29 +944,28 @@ MVP 1 완료 후 착수한다.
 | 버전 관리 | HTML을 교체할 때 이전 blob을 지우지 않고 `html_document_versions(document_id, version, blob_id, ...)`로 남긴다. 저장 용량(D1 500MB)을 고려해 문서당 보관 개수를 제한한다 |
 | 회사 도메인 | 도메인 DNS가 Cloudflare에 있으면 Workers Custom Domain을 연결하고 `APP_ORIGIN`/`RENDER_ORIGIN`만 바꾼다. 관리 화면 압축은 Compression Rules로 끈다 |
 | 저장 용량 확장 | D1 용량이 부족해지면 HTML 원본을 R2로 옮긴다 (결제 수단 등록 필요). `html_blobs`에 저장 위치 컬럼을 추가한다 |
-| 키 기반 API 업로드 | `Authorization: Bearer rb_...` + `PUT /uploads`. 쿠키를 쓰지 않는 경로라 CSRF 검사 대상이 아니다 |
 | 코드 에디터 (Monaco) | 원본은 페이지에 넣지 않고 `/html/:key/source`에서 받아 와 로드한다 |
 | 비로그인 공개 | 문서별 공개 설정 |
 
 
-# 11. MCP 서버 (`apps/mcp`)
+# 11. API 서버 (`apps/api`): MCP와 REST
 
-AI 클라이언트(Claude Code 등)가 개인 접근 키로 문서를 직접 올리고 고치는 경로다 ([decisions.md](decisions.md) D-32). 브라우저 화면과 같은 저장 구조·검증 규칙을 쓴다 (`packages/documents`).
+브라우저가 아닌 클라이언트가 개인 접근 키로 문서를 올리고 고치는 경로다. AI 클라이언트(Claude Code 등)는 MCP(`POST /mcp`), 스크립트·CI는 REST(`/api/v1`)를 쓴다 ([decisions.md](decisions.md) D-32, D-33). 두 경로는 인증과 문서 처리 코드(`src/service.ts`)를 함께 쓰고, 브라우저 화면과 같은 저장 구조·검증 규칙을 쓴다 (`packages/documents`).
 
 ## 11.1 전송 방식
 
 - **Streamable HTTP, 상태 없음:** `POST /mcp` 하나가 JSON-RPC 메시지 하나를 받고, JSON 응답 하나를 돌려준다. SSE 스트림과 `Mcp-Session-Id`는 쓰지 않는다. `GET`·`DELETE /mcp`는 405.
 - **지원 메서드:** `initialize`(프로토콜 `2025-06-18`, `2025-03-26`, `2024-11-05`), `ping`, `tools/list`, `tools/call`. 알림(id 없음)은 202. 일괄(배열) 요청은 받지 않는다.
-- SDK 없이 직접 구현했다. 상태 없는 요청·응답만 필요하고, 무료 플랜 CPU 한도 안에서 가볍게 동작해야 하기 때문이다. 호환성은 공식 SDK 클라이언트로 검증한다 (11.5).
+- SDK 없이 직접 구현했다. 상태 없는 요청·응답만 필요하고, 무료 플랜 CPU 한도 안에서 가볍게 동작해야 하기 때문이다. 호환성은 공식 SDK 클라이언트로 검증한다 (11.6).
 
 ## 11.2 인증과 보호
 
 - **인증:** `Authorization: Bearer rb_...` 헤더의 키를 매 요청마다 조회한다. 회수된 키는 바로 막힌다. 실패하면 401과 `WWW-Authenticate: Bearer`.
-- **실패 횟수 제한:** 로그인과 같은 `login_failures` 테이블을 쓴다. 같은 IP에서 키 인증이 10번 실패하면 웹 로그인과 MCP 모두 30초 잠긴다.
-- **Origin 검사:** MCP 클라이언트는 `Origin`을 보내지 않는다. `Origin`이 있고 `MCP_ORIGIN`이 아니면 403으로 거부해, 웹 페이지(렌더링 문서 포함)가 이 엔드포인트를 쓰지 못하게 한다. 브라우저에서 `Authorization` 헤더를 붙인 다른 출처 요청은 CORS 사전 요청에서도 막힌다(CORS 헤더를 주지 않는다).
+- **실패 횟수 제한:** 로그인과 같은 `login_failures` 테이블을 쓴다. 같은 IP에서 키 인증이 10번 실패하면 웹 로그인과 API(MCP·REST) 모두 30초 잠긴다.
+- **Origin 검사:** MCP 클라이언트, curl, CI는 `Origin`을 보내지 않는다. `/mcp`와 `/api/*` 모두 `Origin`이 있고 `API_ORIGIN`이 아니면 403으로 거부해, 웹 페이지(렌더링 문서 포함)가 이 엔드포인트를 쓰지 못하게 한다. 브라우저에서 `Authorization` 헤더를 붙인 다른 출처 요청은 CORS 사전 요청에서도 막힌다(CORS 헤더를 주지 않는다).
 - **쿠키를 쓰지 않으므로** CSRF 토큰은 필요 없다.
-- **요청 크기:** 본문 약 2MB, HTML 1MB까지. 큰 JSON을 파싱하면 CPU 시간이 들기 때문에 웹 업로드(10MB)보다 작게 잡았다. 실측(10.6) 후 조정한다.
-- 정식 주소가 아닌 호스트의 GET은 `MCP_ORIGIN`으로 이동시킨다 (관리·렌더링 앱과 같다).
+- **MCP 요청 크기:** 본문 약 2MB, HTML 1MB까지. 큰 JSON을 파싱하면 CPU 시간이 들기 때문에 웹 업로드(10MB)보다 작게 잡았다. 실측(10.6) 후 조정한다.
+- 정식 주소가 아닌 호스트의 GET은 `API_ORIGIN`으로 이동시킨다 (관리·렌더링 앱과 같다).
 - 응답은 `Cache-Control: no-store`.
 
 ## 11.3 도구
@@ -983,20 +982,40 @@ AI 클라이언트(Claude Code 등)가 개인 접근 키로 문서를 직접 올
 - **입력 검증:** 제목·설명·링크 규칙은 웹 화면과 같은 함수(`validateDocumentFields`)를 쓴다. 잘못된 입력, 없는 문서, 동시 수정 충돌은 `isError: true` 도구 결과로 돌려줘 AI가 고쳐서 다시 호출하게 한다. 프로토콜 오류(알 수 없는 도구 등)만 JSON-RPC 오류로 응답한다.
 - **동시 수정:** `update_html`은 읽은 시점의 `version`으로 낙관적 잠금을 건다. 충돌하면 새로 올린 HTML을 지우고 "다시 시도" 결과를 돌려준다.
 - **이미지:** MCP로 올리는 HTML은 그대로 저장한다. 같은 폴더 이미지 처리(4.6)는 하지 않는다. 대신 `initialize`의 안내문과 도구 설명에 "이미지는 data: URL이나 https 주소로 넣는다"를 적는다.
-- `tools/call` 때마다 `access_keys.last_used_at`을 갱신하고 `{event: "mcp_tool", tool, keyId}`를 로그로 남긴다.
+- `tools/call`과 REST 요청마다 `access_keys.last_used_at`을 갱신한다. MCP는 `{event: "mcp_tool", tool, keyId}`를 로그로 남긴다.
 
-## 11.4 클라이언트 설정
+## 11.4 REST API (`/api/v1`)
+
+스크립트·CI용. HTML은 **요청 본문 그대로**(raw bytes) 받아 디코딩 없이 1MB 청크로 저장한다 (4.3과 같은 `storeUpload`). JSON 파싱이 없어 CPU 시간이 크기에 비례해 늘지 않으므로 한도는 웹 업로드와 같은 10MB다.
+
+| 요청 | 권한 | 응답 |
+| --- | --- | --- |
+| `POST /html?title=&description=&link=` | EDITOR | 201, `Location`, `ETag`, 문서 정보. `link`는 반복 가능, `이름\|주소` 또는 주소만 |
+| `PUT /html/:key/source` | EDITOR | HTML 교체. 주소 유지 |
+| `PATCH /html/:key` | EDITOR | JSON `{title?, description?, links?}` (64KB까지). 빠진 항목 유지, 빈 배열·빈 문자열은 지움 |
+| `GET /html?q=&page=` | 전체 | 목록 20개씩 (웹 목록과 같은 검색) |
+| `GET /html/:key` | 전체 | 문서 정보, `ETag: "<version>"` |
+| `GET /html/:key/source` | 전체 | 원본 바이트. `application/octet-stream`, `Content-Disposition: attachment`, `CSP: sandbox`로 이 출처에서 실행되지 않게 한다 |
+
+- **동시 수정:** `If-Match: "<version>"`을 보내면 버전이 다를 때 412(`version_mismatch`). 없으면 직전에 읽은 버전으로 낙관적 잠금만 건다 (충돌 시 409).
+- **오류 형식:** `{"error": {"code", "message"}}`. 코드는 `unauthorized`, `locked`, `forbidden`, `invalid_fields`, `not_found`, `too_large`, `empty`, `nul_byte`, `conflict`, `version_mismatch`, `bad_if_match`, `bad_json`, `origin_not_allowed`.
+- 크기: `Content-Length`가 10MB를 넘으면 본문을 읽기 전에 413. 길이 없는(chunked) 본문은 저장 중 10MB를 넘는 순간 중단하고 지운 청크를 정리한다.
+- **삭제 API는 없다** (MCP와 같은 이유).
+- 이미지 처리(4.6)는 하지 않는다. 올린 HTML을 그대로 저장한다.
+- 버전은 경로(`/api/v1`)로 나눈다. 다른 `/api/*`는 404.
+
+## 11.5 클라이언트 설정
 
 Claude Code:
 
 ```sh
-claude mcp add --transport http render-box https://render-box-mcp.<계정>.workers.dev/mcp \
+claude mcp add --transport http render-box https://render-box-api.<계정>.workers.dev/mcp \
   --header "Authorization: Bearer rb_..."
 ```
 
 - 키는 클라이언트 설정 파일에 평문으로 저장된다. 잃어버리면 웹과 마찬가지로 회수하고 다시 발급한다.
 
-## 11.5 테스트
+## 11.6 테스트
 
 - `e2e/mcp.spec.ts`: 공식 SDK 클라이언트(`@modelcontextprotocol/sdk`)로 연결한다.
   - EDITOR: 4개 도구 확인, 올리기 → 수정 → 원본 확인 → 목록 검색 → 렌더링 화면에서 실제 표시
@@ -1004,6 +1023,10 @@ claude mcp add --transport http render-box https://render-box-mcp.<계정>.worke
   - 입력 오류, 1MB 초과, 없는 문서는 도구 오류
   - 틀린 키는 연결 실패, 브라우저 `Origin`은 403
 - Claude Code에서 실제로 HTML을 만들어 올리고 렌더링되는 것을 확인했다.
+- `e2e/api.spec.ts`: REST API.
+  - 올리기(한글 제목·링크) → 정보·원본 바이트 확인(EUC-KR 그대로) → `If-Match`로 교체 → 오래된 버전은 412 → `PATCH` → 검색 → 렌더링 화면 표시
+  - 3MB는 통과, 10MB 초과는 413
+  - VIEWER 쓰기 403, 제목 없음·잘못된 링크 400, 빈 본문 422, 없는 문서·경로 404, 키 없음 401, 브라우저 `Origin` 403
 
 ---
 

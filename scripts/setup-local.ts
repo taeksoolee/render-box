@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
 const secret = randomBytes(32).toString("base64url");
-for (const app of ["admin", "render", "mcp"]) {
+for (const app of ["admin", "render", "api"]) {
   const target = `apps/${app}/.dev.vars`;
   if (existsSync(target)) {
     console.log(`${target} already exists, skipped`);

@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { expect, test } from "@playwright/test";
 import { key, login, RENDER } from "./helpers";
 
-const MCP = "http://mcp.localhost:8789/mcp";
+const MCP = "http://api.localhost:8789/mcp";
 
 // The official SDK client is the compatibility check (design.md 11).
 function connect(accessKey: string) {
