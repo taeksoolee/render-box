@@ -11,6 +11,7 @@
   "dependencies": {
     "@render-box/auth": "workspace:*",
     "@render-box/db": "workspace:*",
+    "@render-box/documents": "workspace:*",
     "@render-box/shared": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.14",

@@ -1,0 +1,12 @@
+{
+  "name": "@render-box/documents",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@render-box/db": "workspace:*",
+    "@render-box/shared": "workspace:*"
+  }
+}

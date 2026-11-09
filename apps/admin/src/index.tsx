@@ -1,15 +1,29 @@
 import {
+  clientIp,
   createSession,
   deleteExpiredSessions,
   deleteSessionFamily,
+  findActiveKey,
   HANDOFF_TTL_MS,
-  hashAccessKey,
+  isLoginLocked,
+  recordLoginFailure,
   sessionCookieName,
   sessionCookieOptions,
   signHandoff,
 } from "@render-box/auth";
-import { blobStream, createDb, deleteBlobStatements, MAX_HTML_BYTES, type DocumentLink } from "@render-box/db";
-import { canonicalOrigin, fetchMetadataGuard, generateDocumentKey, isDocumentKey, safeRedirectPath } from "@render-box/shared";
+import { blobStream, createDb, deleteBlobStatements, MAX_HTML_BYTES } from "@render-box/db";
+import {
+  deleteOrphanBlobs,
+  findAttachableBlob,
+  findDocument as findDocumentRecord,
+  insertDocument,
+  listDocuments,
+  storeUpload,
+  updateDocument,
+  UploadError,
+  type DocumentRecord,
+} from "@render-box/documents";
+import { canonicalOrigin, fetchMetadataGuard, safeRedirectPath } from "@render-box/shared";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -22,14 +36,12 @@ import {
   type DocumentFormErrors,
   type DocumentFormValues,
 } from "./lib/document-form";
-import { clientIp, isLoginLocked, recordLoginFailure } from "./lib/rate-limit";
 import { adminSecurityHeaders } from "./lib/security-headers";
 import { loadUser, requireLogin } from "./lib/session";
-import { deleteOrphanBlobs, findAttachableBlob, storeUpload, UploadError } from "./lib/uploads";
-import { DetailPage, type DetailDoc } from "./views/detail";
+import { DetailPage } from "./views/detail";
 import { ERRORS, ErrorPage, type ErrorKind } from "./views/error";
 import { DocumentFormPage, type FormMode, type KeptUpload } from "./views/form";
-import { ListCount, ListPage, ListRegion, type ListData, type ListRow } from "./views/list";
+import { ListCount, ListPage, ListRegion, type ListData } from "./views/list";
 import { LoginPage } from "./views/login";
 
 type Ctx = Context<AppEnv>;
@@ -111,9 +123,8 @@ app.post("/login", formLimit, async (c) => {
   if (!rawKey) return c.html(<LoginPage next={next} error="접근 키를 입력해 주세요." />, 422);
 
   const db = createDb(c.env.DB);
-  const keyHash = await hashAccessKey(rawKey);
-  const key = await db.query.accessKeys.findFirst({ where: (k, { eq }) => eq(k.keyHash, keyHash) });
-  if (!key || key.revokedAt !== null) {
+  const key = await findActiveKey(c.env.DB, rawKey);
+  if (!key) {
     await recordLoginFailure(c.env.DB, ip);
     console.log(JSON.stringify({ event: "login_failed", ip }));
     return c.html(
@@ -188,34 +199,14 @@ app.put("/uploads", requireLogin, async (c) => {
 
 // ---------------------------------------------------------------- list
 
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, "\\$&");
-
 app.get("/html", requireLogin, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
   const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
-  const like = `%${escapeLike(q)}%`;
-  const where = `(? = '' OR d.title LIKE ? ESCAPE '\\' OR substr(d.document_key, 1, length(?)) = ?)`;
-  const binds = [q, like, q, q];
-
-  const [countRow, rows] = await Promise.all([
-    c.env.DB.prepare(`SELECT COUNT(*) AS n FROM html_documents d WHERE ${where}`)
-      .bind(...binds)
-      .first<{ n: number }>(),
-    c.env.DB.prepare(
-      `SELECT d.document_key AS documentKey, d.title, d.description,
-              json_array_length(d.links) AS linkCount, d.html_size AS htmlSize,
-              k.name AS updatedByName, d.updated_at AS updatedAt
-       FROM html_documents d JOIN access_keys k ON k.id = d.updated_by
-       WHERE ${where}
-       ORDER BY d.updated_at DESC LIMIT ? OFFSET ?`,
-    )
-      .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE)
-      .all<ListRow>(),
-  ]);
+  const { rows, total } = await listDocuments(c.env.DB, { q, page, pageSize: PAGE_SIZE });
 
   const data: ListData = {
-    rows: rows.results,
-    total: countRow?.n ?? 0,
+    rows,
+    total,
     page,
     pageSize: PAGE_SIZE,
     q,
@@ -235,24 +226,9 @@ app.get("/html", requireLogin, async (c) => {
 
 // ---------------------------------------------------------------- documents
 
-type DocRow = DetailDoc & { id: number; blobId: number; version: number };
+type DocRow = DocumentRecord;
 
-async function findDocument(c: Ctx, documentKey: string): Promise<DocRow | null> {
-  if (!isDocumentKey(documentKey)) return null;
-  const row = await c.env.DB.prepare(
-    `SELECT d.id, d.document_key AS documentKey, d.title, d.description, d.links, d.blob_id AS blobId,
-            d.html_size AS htmlSize, d.version, d.created_at AS createdAt, d.updated_at AS updatedAt,
-            ck.name AS createdByName, uk.name AS updatedByName
-     FROM html_documents d
-     JOIN access_keys ck ON ck.id = d.created_by
-     JOIN access_keys uk ON uk.id = d.updated_by
-     WHERE d.document_key = ?`,
-  )
-    .bind(documentKey)
-    .first<Omit<DocRow, "links"> & { links: string }>();
-  if (!row) return null;
-  return { ...row, links: JSON.parse(row.links) as DocumentLink[] };
-}
+const findDocument = (c: Ctx, documentKey: string) => findDocumentRecord(c.env.DB, documentKey);
 
 const emptyValues = (): DocumentFormValues => ({ title: "", description: "", links: [], uploadId: null, version: null });
 
@@ -304,26 +280,13 @@ app.post("/html", requireLogin, formLimit, async (c) => {
     return renderForm(c, { mode: { kind: "create" }, values, errors, kept: blob, status: 422 });
   }
 
-  const now = Date.now();
-  const insert = (documentKey: string) =>
-    c.env.DB.prepare(
-      `INSERT INTO html_documents
-         (document_key, title, description, links, blob_id, html_size, version, created_by, updated_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-    )
-      .bind(documentKey, values.title, values.description || null, JSON.stringify(links), blob!.id, blob!.size,
-        user.keyId, user.keyId, now, now)
-      .run();
-
-  // One retry on the (practically impossible) key collision (design.md 4.1).
-  let documentKey = generateDocumentKey();
-  try {
-    await insert(documentKey);
-  } catch (err) {
-    if (!String(err).includes("UNIQUE")) throw err;
-    documentKey = generateDocumentKey();
-    await insert(documentKey);
-  }
+  const documentKey = await insertDocument(c.env.DB, {
+    title: values.title,
+    description: values.description,
+    links,
+    blob: blob!,
+    keyId: user.keyId,
+  });
   return c.redirect(`/html/${documentKey}?saved=1`, 303);
 });
 
@@ -383,17 +346,15 @@ app.post("/html/:key", requireLogin, formLimit, async (c) => {
   if (!values.version) values.version = doc.version;
   if (hasErrors(errors)) return renderForm(c, { mode: editMode(doc), values, errors, kept: blob, status: 422 });
 
-  const now = Date.now();
-  const updated = await c.env.DB.prepare(
-    `UPDATE html_documents
-     SET title = ?, description = ?, links = ?, blob_id = COALESCE(?, blob_id), html_size = COALESCE(?, html_size),
-         version = version + 1, updated_by = ?, updated_at = ?
-     WHERE id = ? AND version = ?
-     RETURNING id`,
-  )
-    .bind(values.title, values.description || null, JSON.stringify(links), blob?.id ?? null, blob?.size ?? null,
-      user.keyId, now, doc.id, values.version)
-    .first<{ id: number }>();
+  const updated = await updateDocument(c.env.DB, {
+    id: doc.id,
+    version: values.version,
+    title: values.title,
+    description: values.description,
+    links,
+    blob,
+    keyId: user.keyId,
+  });
 
   if (!updated) {
     // Someone saved first: show their change, keep this user's input and any
