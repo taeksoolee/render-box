@@ -21,7 +21,7 @@ export type FormMode =
 export type KeptUpload = { id: number; size: number } | null;
 
 const RESTRICTIONS = [
-  "함께 있던 이미지·스크립트 파일은 올라가지 않습니다. 이미지는 HTML 안에 포함해 주세요.",
+  "함께 있던 스크립트·스타일 파일은 올라가지 않습니다. 이미지는 저장할 때 파일을 선택하면 HTML 안에 넣어 줍니다.",
   "브라우저 저장소(localStorage 등)는 새로고침하면 초기화됩니다.",
   "새 창 열기(window.open, target=\"_blank\")와 파일 다운로드는 동작하지 않습니다.",
   "외부 API는 모든 출처를 허용하는 공개 API(Access-Control-Allow-Origin: *)만 호출할 수 있습니다.",
@@ -78,6 +78,58 @@ function LinkRowFields({ row, index }: { row: LinkRow; index: number }) {
           <span>{row.error}</span>
         </p>
       ) : null}
+    </div>
+  );
+}
+
+const filePick =
+  `${ui.secondary} h-8 cursor-pointer has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 ` +
+  "has-[input:focus-visible]:outline-focus";
+
+// Images the HTML points to by local path (<img src="images/a.png">). The
+// browser inlines the chosen files as data: URLs before upload, so storage and
+// rendering stay a single HTML file (design.md 4.6).
+function ImageInputs() {
+  return (
+    <div id="images" class="space-y-3" data-images hidden>
+      <Alert kind="warning" title="HTML에 들어갈 이미지 파일을 선택해 주세요">
+        <p class="break-keep">
+          이 HTML은 함께 올라가지 않는 이미지 파일을 쓰고 있습니다. 경로마다 파일을 선택하면 HTML 안에
+          넣어(base64) 함께 저장합니다. 모두 선택해야 저장할 수 있습니다.
+        </p>
+      </Alert>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class={filePick}>
+          <input type="file" multiple accept="image/*" class="sr-only" data-image-bulk />
+          <Icon name="image" />
+          여러 파일 한 번에 선택
+        </label>
+        <span class="text-xs text-fg-subtle">파일 이름이 같은 경로에 자동으로 연결합니다</span>
+      </div>
+      <ul class="space-y-2" data-image-list></ul>
+      <p class="text-xs text-danger-fg" aria-live="polite" data-image-msg></p>
+      <template data-image-template>
+        <li
+          class={
+            "group flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 " +
+            "data-[state=error]:border-danger data-[state=error]:bg-danger-soft"
+          }
+          data-image-row
+          data-state="missing"
+        >
+          <span class="text-fg-subtle group-data-[state=selected]:text-success-fg">
+            <Icon name="image" class="size-5" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-mono text-xs" data-image-src></p>
+            <p class="truncate text-xs text-fg-subtle group-data-[state=error]:text-danger-fg" data-image-status></p>
+          </div>
+          <label class={filePick}>
+            <input type="file" accept="image/*" class="sr-only" data-image-file />
+            <span data-image-action>파일 선택</span>
+          </label>
+        </li>
+      </template>
     </div>
   );
 }
@@ -217,6 +269,8 @@ function HtmlInput({ mode, kept, error }: { mode: FormMode; kept: KeptUpload; er
           한글이 깨지지 않았는지 저장 후 한 번 확인해 주세요.
         </Alert>
       </div>
+      <ImageInputs />
+
       <div data-warnings hidden>
         <Alert kind="warning" title="저장은 할 수 있지만, 일부가 표시되지 않을 수 있습니다">
           <ul class="list-disc space-y-1 pl-4" data-warning-list></ul>

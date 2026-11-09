@@ -128,7 +128,7 @@
       if (!value) continue;
       if (tag === "link" && !/rel\s*=\s*["']?(stylesheet|icon|preload|modulepreload)/i.test(m[0])) continue;
       if (/^http:/i.test(value)) insecure.push(value);
-      else if (!ABSOLUTE.test(value)) relative.push(value);
+      else if (!ABSOLUTE.test(value) && tag !== "img") relative.push(value);
     }
     var unique = function (list) {
       return list.filter(function (v, i) {
@@ -136,6 +136,71 @@
       });
     };
     return { relative: unique(relative), insecure: unique(insecure) };
+  }
+
+  // Local <img src> paths outside scripts and comments. Values built by script
+  // (<img src="${url}"> in a template string) are not files to ask for.
+  var NOT_MARKUP = /<script\b[\s\S]*?<\/script\s*>|<!--[\s\S]*?-->/gi;
+  var IMG_TAG = /<img\b[^>]*>/gi;
+  var SRC_ATTR = /(\ssrc\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
+  var TEMPLATE = /\$\{|\{\{|<%/;
+
+  function mapMarkup(html, fn) {
+    var out = "";
+    var last = 0;
+    var m;
+    NOT_MARKUP.lastIndex = 0;
+    while ((m = NOT_MARKUP.exec(html))) {
+      out += fn(html.slice(last, m.index)) + m[0];
+      last = NOT_MARKUP.lastIndex;
+    }
+    return out + fn(html.slice(last));
+  }
+  function localSrc(tag) {
+    var m = SRC_ATTR.exec(tag);
+    if (!m) return null;
+    var value = (m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4]).trim();
+    return value && !ABSOLUTE.test(value) && !TEMPLATE.test(value) ? value : null;
+  }
+  function findLocalImages(html) {
+    var found = [];
+    mapMarkup(html, function (part) {
+      (part.match(IMG_TAG) || []).forEach(function (tag) {
+        var src = localSrc(tag);
+        if (src && found.indexOf(src) === -1) found.push(src);
+      });
+      return part;
+    });
+    return found;
+  }
+  function inlineImages(html, dataUrls) {
+    return mapMarkup(html, function (part) {
+      return part.replace(IMG_TAG, function (tag) {
+        var src = localSrc(tag);
+        if (!src || !dataUrls[src]) return tag;
+        return tag.replace(SRC_ATTR, function (_, prefix) {
+          return prefix + '"' + dataUrls[src] + '"';
+        });
+      });
+    });
+  }
+  // "./img/Logo.png?v=2" and a picked file "logo.png" belong together.
+  function baseName(src) {
+    var path = src.split(/[?#]/)[0];
+    try {
+      path = decodeURIComponent(path);
+    } catch (e) {}
+    return path.split(/[\\/]/).pop().toLowerCase();
+  }
+  function readDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        resolve(reader.result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   function examples(list) {
@@ -174,6 +239,74 @@
 
     var html = null; // decoded HTML waiting to be uploaded
     var titleAutofilled = false;
+    var images = $("[data-images]");
+    var imageList = images && $("[data-image-list]", images);
+    var imageMsg = images && $("[data-image-msg]", images);
+    var imageSrcs = []; // local <img src> paths in html
+    var imageFiles = {}; // src -> File chosen for it
+
+    function setImageFile(src, file) {
+      if (!/^image\//.test(file.type)) {
+        imageMsg.textContent = file.name + "은(는) 이미지 파일이 아닙니다.";
+        return false;
+      }
+      imageFiles[src] = file;
+      return true;
+    }
+    function renderImages() {
+      if (!images) return;
+      imageList.innerHTML = "";
+      imageMsg.textContent = "";
+      var template = $("[data-image-template]", images);
+      imageSrcs.forEach(function (src) {
+        var row = template.content.firstElementChild.cloneNode(true);
+        var file = imageFiles[src];
+        var input = $("[data-image-file]", row);
+        row.dataset.state = file ? "selected" : "missing";
+        $("[data-image-src]", row).textContent = src;
+        $("[data-image-status]", row).textContent = file
+          ? file.name + " · " + formatSize(file.size)
+          : "파일을 선택해 주세요";
+        $("[data-image-action]", row).textContent = file ? "바꾸기" : "파일 선택";
+        input.setAttribute("aria-label", src + " 이미지 파일 선택");
+        input.addEventListener("change", function () {
+          if (input.files && input.files[0] && setImageFile(src, input.files[0])) {
+            renderImages();
+            announce(src + "에 " + input.files[0].name + " 파일을 연결했습니다");
+          }
+        });
+        imageList.appendChild(row);
+      });
+      images.hidden = imageSrcs.length === 0;
+    }
+    function updateImages(text) {
+      imageSrcs = text ? findLocalImages(text) : [];
+      Object.keys(imageFiles).forEach(function (src) {
+        if (imageSrcs.indexOf(src) === -1) delete imageFiles[src];
+      });
+      renderImages();
+    }
+    // Several image files at once: connect each to the paths with its name.
+    function matchImages(files) {
+      var unmatched = [];
+      Array.prototype.forEach.call(files, function (file) {
+        var hit = false;
+        imageSrcs.forEach(function (src) {
+          if (baseName(src) === file.name.toLowerCase() && setImageFile(src, file)) hit = true;
+        });
+        if (!hit) unmatched.push(file.name);
+      });
+      renderImages();
+      var connected = files.length - unmatched.length;
+      announce("이미지 " + connected + "개를 연결했습니다");
+      if (unmatched.length)
+        imageMsg.textContent = "이름이 맞는 경로가 없어 연결하지 못한 파일: " + unmatched.join(", ");
+    }
+    if (images)
+      $("[data-image-bulk]", images).addEventListener("change", function (e) {
+        if (e.target.files && e.target.files.length) matchImages(e.target.files);
+        e.target.value = "";
+      });
 
     function setState(state, message) {
       zone.dataset.state = state;
@@ -185,6 +318,7 @@
       if (replaceNote) replaceNote.hidden = !text;
     }
     function showWarnings(text) {
+      updateImages(text);
       warningList.innerHTML = "";
       if (!text) {
         warnings.hidden = true;
@@ -194,7 +328,7 @@
       var items = [];
       if (found.relative.length)
         items.push([
-          "이 파일만 올라가므로 함께 있던 이미지·스크립트 파일은 표시되지 않습니다. 이미지를 HTML 안에 포함(base64)해서 다시 만들어 주세요.",
+          "이 파일만 올라가므로 함께 있던 스크립트·스타일 파일은 동작하지 않습니다. HTML 안에 포함해서 다시 만들어 주세요.",
           found.relative,
         ]);
       if (found.insecure.length)
@@ -251,7 +385,7 @@
         return setState("error", "파일 내용이 비어 있습니다. 다른 파일을 선택해 주세요.");
       }
       setState("reading");
-      file.arrayBuffer().then(function (buffer) {
+      return file.arrayBuffer().then(function (buffer) {
         var decoded = decodeHtml(buffer);
         if (decoded.text.indexOf("\u0000") !== -1) {
           setPending(null);
@@ -294,8 +428,24 @@
         if (zone.dataset.mode === "paste") return;
         var files = e.dataTransfer && e.dataTransfer.files;
         if (!files || files.length === 0) return setState(html ? "selected" : "empty");
-        if (files.length > 1) return setState("error", "파일은 하나만 올릴 수 있습니다.");
-        handleFile(files[0]);
+        var htmlFiles = [];
+        var imageDrops = [];
+        Array.prototype.forEach.call(files, function (f) {
+          (/\.html?$/i.test(f.name) ? htmlFiles : imageDrops).push(f);
+        });
+        if (htmlFiles.length > 1) return setState("error", "HTML 파일은 하나만 올릴 수 있습니다.");
+        if (htmlFiles.length === 0) {
+          if (imageSrcs.length) {
+            setState(html ? "selected" : "empty");
+            return matchImages(imageDrops);
+          }
+          return handleFile(files[0]);
+        }
+        var read = handleFile(htmlFiles[0]);
+        if (read && imageDrops.length)
+          read.then(function () {
+            if (imageSrcs.length) matchImages(imageDrops);
+          });
       });
 
       $("[data-file-clear]", zone).addEventListener("click", function () {
@@ -343,6 +493,7 @@
       if (submitting) return e.preventDefault();
       if (zone && zone.dataset.mode === "paste" && paste.value.trim() && html !== paste.value) {
         setPending(paste.value);
+        showWarnings(paste.value);
       }
       var needsHtml = !isEdit && !uploadIdInput.value;
       if (!html) {
@@ -354,18 +505,52 @@
         return;
       }
       e.preventDefault();
+      var missing = imageSrcs.filter(function (src) {
+        return !imageFiles[src];
+      });
+      if (missing.length) {
+        $$("[data-image-row]", imageList).forEach(function (row, i) {
+          if (!imageFiles[imageSrcs[i]]) row.dataset.state = "error";
+        });
+        imageMsg.textContent = "이미지 " + missing.length + "개의 파일을 선택해야 저장할 수 있습니다.";
+        $('[data-image-row][data-state="error"] [data-image-file]', imageList).focus();
+        return;
+      }
       submitting = true;
       submitBtn.disabled = true;
       $("[data-busy-icon]", submitBtn).hidden = false;
       $("[data-submit-label]", submitBtn).textContent = "저장하는 중…";
       submitError.hidden = true;
+      function resetSubmit() {
+        submitting = false;
+        submitBtn.disabled = false;
+        $("[data-busy-icon]", submitBtn).hidden = true;
+        $("[data-submit-label]", submitBtn).textContent = "저장";
+      }
 
-      fetch("/uploads", {
-        method: "PUT",
-        headers: { "Content-Type": "text/html; charset=utf-8", "X-CSRF-Token": csrfToken(form) },
-        body: new TextEncoder().encode(html),
-        credentials: "same-origin",
-      })
+      Promise.all(
+        imageSrcs.map(function (src) {
+          return readDataUrl(imageFiles[src]);
+        }),
+      )
+        .then(function (urls) {
+          var dataUrls = {};
+          imageSrcs.forEach(function (src, i) {
+            dataUrls[src] = urls[i];
+          });
+          var body = new TextEncoder().encode(imageSrcs.length ? inlineImages(html, dataUrls) : html);
+          if (body.length > MAX_BYTES) {
+            var err = new Error("too_large_inlined");
+            err.size = body.length;
+            throw err;
+          }
+          return fetch("/uploads", {
+            method: "PUT",
+            headers: { "Content-Type": "text/html; charset=utf-8", "X-CSRF-Token": csrfToken(form) },
+            body: body,
+            credentials: "same-origin",
+          });
+        })
         .then(function (res) {
           return res.json().then(function (data) {
             if (!res.ok || !data.uploadId) throw new Error(data.error || "upload_failed");
@@ -377,11 +562,12 @@
           HTMLFormElement.prototype.submit.call(form);
         })
         .catch(function (err) {
-          submitting = false;
-          submitBtn.disabled = false;
-          $("[data-busy-icon]", submitBtn).hidden = true;
-          $("[data-submit-label]", submitBtn).textContent = "저장";
-          if (err.message === "too_large") {
+          resetSubmit();
+          if (err.message === "too_large_inlined") {
+            imageMsg.textContent =
+              "이미지를 넣으니 10MB를 넘습니다. (" + formatSize(err.size) + ") 이미지 크기를 줄여서 다시 선택해 주세요.";
+            $("[data-image-bulk]", images).focus();
+          } else if (err.message === "too_large") {
             setState("error", "10MB를 넘는 파일은 올릴 수 없습니다.");
           } else {
             submitError.hidden = false;

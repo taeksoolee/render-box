@@ -7,7 +7,7 @@ test("editor uploads a file and anyone logged in can open it in a new window", a
 
   const html =
     "<!DOCTYPE html><html><head><title>AI 프로토타입</title></head><body><h1>안녕</h1>" +
-    "<img src='images/logo.png'>" +
+    "<script src='js/app.js'></script>" +
     "<script>localStorage.setItem('k','stored');document.body.dataset.storage=localStorage.getItem('k')</script>" +
     "</body></html>";
   await page.locator("#html-file").setInputFiles({ name: "proto.html", mimeType: "text/html", buffer: Buffer.from(html) });
@@ -15,7 +15,7 @@ test("editor uploads a file and anyone logged in can open it in a new window", a
   // Title autofill and the relative-path warning (design.md 4.6).
   await expect(page.getByLabel(/^제목/)).toHaveValue("AI 프로토타입");
   await expect(page.getByText("저장은 할 수 있지만")).toBeVisible();
-  await expect(page.getByText("예: images/logo.png")).toBeVisible();
+  await expect(page.getByText("예: js/app.js")).toBeVisible();
 
   await page.getByRole("button", { name: "링크 추가" }).click();
   await page.getByLabel("링크 1 이름").fill("기획서");
