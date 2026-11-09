@@ -87,15 +87,16 @@ const filePick =
   "has-[input:focus-visible]:outline-focus";
 
 // Images the HTML points to by local path (<img src="images/a.png">). The
-// browser inlines the chosen files as data: URLs before upload, so storage and
-// rendering stay a single HTML file (design.md 4.6).
+// browser inlines the chosen files as data: URLs before upload, and a grey
+// placeholder for the rest, so storage and rendering stay a single HTML file
+// (design.md 4.6).
 function ImageInputs() {
   return (
     <div id="images" class="space-y-3" data-images hidden>
-      <Alert kind="warning" title="HTML에 들어갈 이미지 파일을 선택해 주세요">
+      <Alert kind="info" title="HTML이 쓰는 이미지 파일을 함께 넣을 수 있습니다">
         <p class="break-keep">
-          이 HTML은 함께 올라가지 않는 이미지 파일을 쓰고 있습니다. 경로마다 파일을 선택하면 HTML 안에
-          넣어(base64) 함께 저장합니다. 모두 선택해야 저장할 수 있습니다.
+          이 HTML은 함께 올라가지 않는 이미지 파일을 쓰고 있습니다. 파일을 선택하면 HTML 안에 넣어(base64)
+          함께 저장합니다. 선택하지 않은 이미지는 빈 상자로 표시됩니다.
         </p>
       </Alert>
       <div class="flex flex-wrap items-center gap-2">
@@ -107,13 +108,11 @@ function ImageInputs() {
         <span class="text-xs text-fg-subtle">파일 이름이 같은 경로에 자동으로 연결합니다</span>
       </div>
       <ul class="space-y-2" data-image-list></ul>
+      <p class="text-xs text-fg-muted" aria-live="polite" data-image-summary></p>
       <p class="text-xs text-danger-fg" aria-live="polite" data-image-msg></p>
       <template data-image-template>
         <li
-          class={
-            "group flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3 " +
-            "data-[state=error]:border-danger data-[state=error]:bg-danger-soft"
-          }
+          class="group flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3"
           data-image-row
           data-state="missing"
         >
@@ -122,7 +121,7 @@ function ImageInputs() {
           </span>
           <div class="min-w-0 flex-1">
             <p class="truncate font-mono text-xs" data-image-src></p>
-            <p class="truncate text-xs text-fg-subtle group-data-[state=error]:text-danger-fg" data-image-status></p>
+            <p class="truncate text-xs text-fg-subtle" data-image-status></p>
           </div>
           <label class={filePick}>
             <input type="file" accept="image/*" class="sr-only" data-image-file />

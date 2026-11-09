@@ -192,6 +192,19 @@
     } catch (e) {}
     return path.split(/[\\/]/).pop().toLowerCase();
   }
+  // Grey box standing in for an image nobody supplied; shows the file name so
+  // the planning intent ("a logo goes here") still reads.
+  function placeholderUrl(src) {
+    var name = baseName(src).replace(/[&<>"']/g, function (c) {
+      return "&#" + c.charCodeAt(0) + ";";
+    });
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">' +
+      '<rect width="400" height="300" fill="#e5e7eb"/>' +
+      '<text x="200" y="150" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" ' +
+      'font-size="16" fill="#6b7280">' + name + "</text></svg>";
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
   function readDataUrl(file) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
@@ -266,7 +279,7 @@
         $("[data-image-src]", row).textContent = src;
         $("[data-image-status]", row).textContent = file
           ? file.name + " · " + formatSize(file.size)
-          : "파일을 선택해 주세요";
+          : "선택하지 않으면 빈 상자로 표시됩니다";
         $("[data-image-action]", row).textContent = file ? "바꾸기" : "파일 선택";
         input.setAttribute("aria-label", src + " 이미지 파일 선택");
         input.addEventListener("change", function () {
@@ -277,6 +290,12 @@
         });
         imageList.appendChild(row);
       });
+      var skipped = imageSrcs.filter(function (src) {
+        return !imageFiles[src];
+      }).length;
+      $("[data-image-summary]", images).textContent =
+        "이미지 " + imageSrcs.length + "개 중 " + (imageSrcs.length - skipped) + "개 선택" +
+        (skipped ? " · 나머지 " + skipped + "개는 빈 상자로 표시됩니다" : "");
       images.hidden = imageSrcs.length === 0;
     }
     function updateImages(text) {
@@ -505,17 +524,6 @@
         return;
       }
       e.preventDefault();
-      var missing = imageSrcs.filter(function (src) {
-        return !imageFiles[src];
-      });
-      if (missing.length) {
-        $$("[data-image-row]", imageList).forEach(function (row, i) {
-          if (!imageFiles[imageSrcs[i]]) row.dataset.state = "error";
-        });
-        imageMsg.textContent = "이미지 " + missing.length + "개의 파일을 선택해야 저장할 수 있습니다.";
-        $('[data-image-row][data-state="error"] [data-image-file]', imageList).focus();
-        return;
-      }
       submitting = true;
       submitBtn.disabled = true;
       $("[data-busy-icon]", submitBtn).hidden = false;
@@ -530,7 +538,7 @@
 
       Promise.all(
         imageSrcs.map(function (src) {
-          return readDataUrl(imageFiles[src]);
+          return imageFiles[src] ? readDataUrl(imageFiles[src]) : placeholderUrl(src);
         }),
       )
         .then(function (urls) {

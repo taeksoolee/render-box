@@ -17,28 +17,26 @@ const HTML = `<!DOCTYPE html><html><head><title>이미지 문서</title></head><
 <script>var tpl = '<img src="' + 'built.png">'; var t2 = \`<img src="\${"x"}">\`;</script>
 </body></html>`;
 
-test("local <img src> blocks saving until every file is chosen, then inlines them", async ({ page, context }) => {
+test("local <img src> files are inlined; unchosen ones become placeholders", async ({ page, context }) => {
   await login(page, "EDITOR");
   await page.goto(`${APP}/html/new`);
   await page.locator("#html-file").setInputFiles({ name: "doc.html", mimeType: "text/html", buffer: Buffer.from(HTML) });
 
   // Only markup <img> with local paths: not https, comments or script strings.
   const rows = page.locator("[data-image-row]");
-  await expect(page.getByText("HTML에 들어갈 이미지 파일을 선택해 주세요")).toBeVisible();
+  await expect(page.getByText("HTML이 쓰는 이미지 파일을 함께 넣을 수 있습니다")).toBeVisible();
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("images/logo.png");
   await expect(rows.nth(1)).toContainText("photo.png");
 
-  await page.getByRole("button", { name: "저장" }).click();
-  await expect(page.getByText("이미지 2개의 파일을 선택해야 저장할 수 있습니다.")).toBeVisible();
-  await expect(page).toHaveURL(`${APP}/html/new`);
+  await expect(page.getByText("이미지 2개 중 0개 선택 · 나머지 2개는 빈 상자로 표시됩니다")).toBeVisible();
 
-  // One path by its own picker, the other by name through the bulk picker.
+  // One path by its own picker; the bulk picker matches by name only.
   await page.getByLabel("images/logo.png 이미지 파일 선택").setInputFiles(png("anything.png"));
   await expect(rows.nth(0)).toContainText("anything.png");
-  await page.locator("[data-image-bulk]").setInputFiles([png("photo.png"), png("unused.png")]);
-  await expect(rows.nth(1)).toContainText("photo.png");
+  await page.locator("[data-image-bulk]").setInputFiles([png("unused.png")]);
   await expect(page.getByText("연결하지 못한 파일: unused.png")).toBeVisible();
+  await expect(page.getByText("이미지 2개 중 1개 선택 · 나머지 1개는 빈 상자로 표시됩니다")).toBeVisible();
 
   await page.getByRole("button", { name: "저장" }).click();
   await expect(page.getByText("저장했습니다")).toBeVisible();
@@ -46,11 +44,15 @@ test("local <img src> blocks saving until every file is chosen, then inlines the
 
   const render = await context.newPage();
   await render.goto(`${RENDER}/${documentKey}`);
-  for (const id of ["a", "b", "c"]) {
+  for (const id of ["a", "b"]) {
     const img = render.locator(`#${id}`);
     await expect(img).toHaveAttribute("src", /^data:image\/png;base64,/);
     expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth)).toBe(1);
   }
+  // Not chosen: a grey placeholder box naming the file, not a broken image.
+  const placeholder = render.locator("#c");
+  await expect(placeholder).toHaveAttribute("src", /^data:image\/svg\+xml;charset=utf-8,.*photo\.png/);
+  expect(await placeholder.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth)).toBe(400);
   await expect(render.locator("#ext")).toHaveAttribute("src", "https://example.com/x.png");
 
   // Script and comment text stay byte-for-byte.
