@@ -14,6 +14,7 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 | --- | --- | --- |
 | [docs/prd.md](docs/prd.md) | 기획자, 팀 전체 | 목적, 사용 흐름, 로드맵, 화면, 완료 기준 |
 | [docs/design.md](docs/design.md) | 개발자 | 시스템 구성, 인증, 렌더링 격리, DB, 라우팅, 테스트 계획 |
+| [docs/api.md](docs/api.md) | 기획자, 개발자 | AI 도구(MCP)와 REST API로 올리는 방법 |
 | [docs/ui.md](docs/ui.md) | 개발자, 디자이너 | UI 디자인 가이드 (토큰, 레이아웃, 컴포넌트, 문구) |
 | [docs/decisions.md](docs/decisions.md) | 설계를 다시 검토하는 사람 | 주요 결정과 기각한 대안 |
 
@@ -61,51 +62,14 @@ pnpm dev                # 렌더링 :8788 → 관리 :8787 → API :8789 순서�
 
 브라우저 테스트는 한 번에 하나씩 실행합니다. 로컬에서는 여러 Worker 프로세스가 같은 SQLite 파일을 함께 쓰므로, 테스트를 병렬로 돌리면 D1이 간헐적으로 `Failed to get session commit token` 오류를 냅니다. 운영 D1에는 해당하지 않습니다.
 
-## AI에서 바로 올리기 (MCP)
+## AI·스크립트로 올리기
 
-Claude Code 같은 MCP 클라이언트에 render-box를 연결하면 "이 HTML render-box에 올려 줘"로 바로 올리고 렌더링 URL을 받습니다. 본인의 접근 키를 씁니다. EDITOR 키는 올리기·수정·조회, VIEWER 키는 조회만 할 수 있습니다.
+웹 화면 없이 개인 접근 키로 올릴 수 있습니다. 사용법은 [docs/api.md](docs/api.md)를 보세요.
+
+- **MCP:** Claude Code 같은 AI 도구에서 "render-box에 올려 줘"로 올리고 렌더링 URL 받기 (1MB까지)
+- **REST API:** curl·CI에서 `POST /api/v1/html`로 올리기 (10MB까지)
 
 ```sh
-# 로컬
 claude mcp add --transport http render-box http://api.localhost:8789/mcp \
   --header "Authorization: Bearer rb_..."
 ```
-
-| 도구 | 설명 |
-| --- | --- |
-| `upload_html` | 새 문서 올리기 → 렌더링 URL |
-| `update_html` | 문서 수정 (넘긴 항목만 바뀜, URL 유지) |
-| `list_html` | 문서 찾기 |
-| `get_html` | 문서 정보와 HTML 원본 |
-
-- HTML은 1MB까지 올릴 수 있습니다. 더 큰 파일은 웹 화면이나 REST API로 올리세요.
-- 이미지는 HTML 안에 base64로 넣거나 https 주소를 써야 합니다.
-- 삭제는 웹 화면에서만 할 수 있습니다.
-
-## 스크립트에서 올리기 (REST API)
-
-같은 접근 키로 curl, CI 등에서 씁니다. HTML 파일을 본문에 그대로 보내므로 웹 화면과 같이 10MB까지 올릴 수 있습니다.
-
-```sh
-# 새로 올리기 → 201, render_url
-curl http://api.localhost:8789/api/v1/html \
-  -H "Authorization: Bearer rb_..." \
-  --url-query "title=회원가입 화면" \
-  --url-query "link=기획서|https://example.com/spec" \
-  --data-binary @signup.html
-
-# HTML만 바꾸기 (주소 유지). If-Match는 선택: 그 사이 누가 고쳤으면 412
-curl -X PUT http://api.localhost:8789/api/v1/html/<문서키>/source \
-  -H "Authorization: Bearer rb_..." -H 'If-Match: "1"' --data-binary @signup.html
-```
-
-| 요청 | 권한 | 설명 |
-| --- | --- | --- |
-| `POST /api/v1/html?title=&description=&link=` | EDITOR | 본문 = HTML 원본. `link`는 여러 번, `이름\|주소` 또는 주소만 |
-| `PUT /api/v1/html/:key/source` | EDITOR | HTML 교체 |
-| `PATCH /api/v1/html/:key` | EDITOR | JSON `{title?, description?, links?}`. 빠진 항목은 유지 |
-| `GET /api/v1/html?q=&page=` | 전체 | 목록 (20개씩) |
-| `GET /api/v1/html/:key` | 전체 | 문서 정보, `ETag`에 버전 |
-| `GET /api/v1/html/:key/source` | 전체 | HTML 원본 (올린 바이트 그대로) |
-
-오류는 `{"error": {"code", "message"}}` 형식입니다. 삭제는 여기서도 할 수 없습니다.
