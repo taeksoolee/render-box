@@ -126,3 +126,18 @@ test.describe("versions", () => {
     await expect(page.getByRole("button", { name: "선택한 버전 지우기" })).toHaveCount(0);
   });
 });
+
+// The cap itself is covered by packages/documents/test; here the server's
+// 507 is simulated to check what the editor sees (design.md 4.9).
+test("a full store shows how to free space and keeps the form", async ({ page }) => {
+  await login(page, "EDITOR");
+  await page.route(`${APP}/uploads`, (route) => route.fulfill({ status: 507, json: { error: "storage_full" } }));
+  await page.goto(`${APP}/html/new`);
+  await page.locator("#html-file").setInputFiles({ name: "full.html", mimeType: "text/html", buffer: Buffer.from(html("x")) });
+  await page.getByLabel(/^제목/).fill("가득 참");
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByText(/저장 공간이 부족합니다/)).toBeVisible();
+  await expect(page).toHaveURL(`${APP}/html/new`);
+  await expect(page.getByLabel(/^제목/)).toHaveValue("가득 참");
+  await expect(page.getByRole("button", { name: "저장" })).toBeEnabled();
+});

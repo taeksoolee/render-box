@@ -120,7 +120,7 @@ export function StoragePage({
         </section>
 
         <section class="space-y-3">
-          <h2 class={ui.h2}>이전 버전 (큰 순서)</h2>
+          <h2 class={ui.h2}>이전 버전 (지우면 공간이 많이 생기는 순서)</h2>
           {versions.length === 0 ? (
             <p class="text-fg-subtle">이전 버전이 없습니다.</p>
           ) : (

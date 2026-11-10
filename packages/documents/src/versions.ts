@@ -47,7 +47,8 @@ export async function findVersion(d1: D1Database, documentId: number, seq: numbe
     .first<VersionRow>();
 }
 
-// Every non-current version, largest first, for the storage screen.
+// Every non-current version for the storage screen, ordered by the space
+// deleting it would free, so shared blobs (which free nothing) sink.
 export async function listPreviousVersions(d1: D1Database, limit = 200): Promise<PreviousVersionRow[]> {
   const { results } = await d1
     .prepare(
@@ -59,7 +60,7 @@ export async function listPreviousVersions(d1: D1Database, limit = 200): Promise
        JOIN html_documents d ON d.id = v.document_id
        JOIN access_keys k ON k.id = v.created_by
        WHERE ${NOT_CURRENT}
-       ORDER BY v.html_size DESC, v.created_at ASC
+       ORDER BY freesBytes DESC, v.html_size DESC, v.created_at ASC
        LIMIT ?`,
     )
     .bind(limit)
