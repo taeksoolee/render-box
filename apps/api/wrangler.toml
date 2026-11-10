@@ -8,11 +8,12 @@ preview_urls = false
 port = 8789
 inspector_port = 9232
 
-# Production values. Local overrides live in .dev.vars (see .dev.vars.example).
+# Placeholders: `pnpm setup:remote` writes the real values to render-box.deploy.json
+# and deploys with a generated wrangler.deploy.toml. Local values live in .dev.vars.
 [vars]
-APP_ORIGIN = "https://render-box-admin.leets1490.workers.dev"
-RENDER_ORIGIN = "https://render-box-render.leets1490.workers.dev"
-API_ORIGIN = "https://render-box-api.leets1490.workers.dev"
+APP_ORIGIN = "https://render-box-admin.example.workers.dev"
+RENDER_ORIGIN = "https://render-box-render.example.workers.dev"
+API_ORIGIN = "https://render-box-api.example.workers.dev"
 # Total HTML storage cap and warning threshold (design.md 4.9).
 STORAGE_LIMIT_MB = "400"
 STORAGE_WARN_PERCENT = "80"
@@ -20,5 +21,5 @@ STORAGE_WARN_PERCENT = "80"
 [[d1_databases]]
 binding = "DB"
 database_name = "render-box"
-database_id = "7a6ff898-fd18-4613-bc56-eb6b7bc76b70"
+database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "../../packages/db/migrations"

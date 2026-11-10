@@ -6,8 +6,7 @@
     "dev": "pnpm build:assets && concurrently -k -n css,worker \"pnpm watch:css\" \"wrangler dev --persist-to ../../.wrangler/state\"",
     "build:assets": "mkdir -p public/static/js && cp node_modules/htmx.org/dist/htmx.min.js public/static/js/htmx.min.js && pnpm build:css",
     "build:css": "tailwindcss -i src/styles/app.css -o public/static/app.css --minify",
-    "watch:css": "tailwindcss -i src/styles/app.css -o public/static/app.css --watch",
-    "deploy": "pnpm build:assets && wrangler deploy"
+    "watch:css": "tailwindcss -i src/styles/app.css -o public/static/app.css --watch"
   },
   "dependencies": {
     "@render-box/auth": "workspace:*",

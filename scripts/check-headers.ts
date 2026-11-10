@@ -1,10 +1,10 @@
 // Post-deploy check against the production hosts (design.md 9.4). Reads the
-// origins from each app's wrangler.toml, so run it after `pnpm deploy:prod`.
+// origins from render-box.deploy.json, so run it after `pnpm deploy:prod`.
 // Uses node:https instead of fetch: fetch merges repeated headers and hides
 // whether a response carried one CSP header or two.
 //   pnpm check:headers
 import { request } from "node:https";
-import { readFileSync } from "node:fs";
+import { readDeployConfig } from "./lib/remote";
 
 type Raw = { status: number; headers: [string, string][] };
 
@@ -24,16 +24,9 @@ function get(url: string, headers: Record<string, string> = {}): Promise<Raw> {
 const all = (r: Raw, name: string) => r.headers.filter(([k]) => k === name).map(([, v]) => v);
 const one = (r: Raw, name: string) => all(r, name)[0];
 
-function origin(app: string, name: string): string {
-  const toml = readFileSync(`apps/${app}/wrangler.toml`, "utf8");
-  const value = new RegExp(`^${name}\\s*=\\s*"([^"]+)"`, "m").exec(toml)?.[1];
-  if (!value) throw new Error(`${name} not found in apps/${app}/wrangler.toml`);
-  return value;
-}
-
-const APP = origin("admin", "APP_ORIGIN");
-const RENDER = origin("render", "RENDER_ORIGIN");
-const API = origin("api", "API_ORIGIN");
+const origins = readDeployConfig().origins;
+if (!origins) throw new Error("render-box.deploy.json has no origins yet. Run `pnpm setup:remote`.");
+const { app: APP, render: RENDER, api: API } = origins;
 
 let failed = 0;
 function check(label: string, ok: boolean, detail = "") {

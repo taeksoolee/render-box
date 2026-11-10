@@ -2,6 +2,7 @@ import type { SessionUser } from "@render-box/auth";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { Icon, type IconName } from "./icon";
+import { getHelpUrl, SOURCE_URL } from "./links";
 import * as ui from "./ui";
 
 export const ROLE_LABEL = { EDITOR: "편집자", VIEWER: "열람자" } as const;
@@ -32,6 +33,7 @@ export function Document({ title, children }: { title: string; children: Child }
             본문으로 건너뛰기
           </a>
           {children}
+          <Footer />
           <div id="live" class="sr-only" aria-live="polite"></div>
         </body>
       </html>
@@ -49,6 +51,7 @@ export function TopBar({ user }: { user: SessionUser }) {
         <div class="flex items-center gap-2">
           <span class="hidden text-sm text-fg-muted sm:inline">{user.name}</span>
           <span class={user.role === "EDITOR" ? ui.badgePrimary : ui.badgeNeutral}>{ROLE_LABEL[user.role]}</span>
+          <HelpLink class={ui.ghost} />
           <form method="post" action="/logout">
             <input type="hidden" name="_csrf" value={user.csrfToken ?? ""} />
             <button type="submit" class={ui.ghost}>
@@ -137,5 +140,28 @@ export function BackLink({ href, children }: { href: string; children: Child }) 
       <Icon name="arrow-left" />
       {children}
     </a>
+  );
+}
+
+// External pages open in a new tab so an unsaved form is not lost.
+export function HelpLink({ class: cls, label = "도움말" }: { class: string; label?: string }) {
+  const href = getHelpUrl();
+  if (!href) return null;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" class={cls}>
+      {label}
+      <span class="sr-only"> (새 창)</span>
+    </a>
+  );
+}
+
+// Open-source attribution; fixed, unlike the help link.
+function Footer() {
+  return (
+    <footer class="mx-auto max-w-5xl px-4 pb-8 text-center text-xs text-fg-subtle sm:px-6">
+      <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" class="hover:text-fg-muted hover:underline">
+        render-box · GitHub
+      </a>
+    </footer>
   );
 }

@@ -7,6 +7,7 @@
 //   pnpm key set-role <prefix> EDITOR|VIEWER [--remote]
 import { execFileSync } from "node:child_process";
 import { createHash, randomInt } from "node:crypto";
+import { deployConfigArgs, readDeployConfig, wrangler, writeWranglerConfigs } from "./lib/remote";
 
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const ROLES = ["EDITOR", "VIEWER"] as const;
@@ -26,13 +27,18 @@ function fail(message: string): never {
 
 const sqlString = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
+// --remote uses the production settings from render-box.deploy.json.
+if (remote) writeWranglerConfigs(readDeployConfig());
+
 function d1(sql: string): Record<string, unknown>[] {
-  const target = remote ? ["--remote"] : ["--local", "--persist-to", "../../.wrangler/state"];
-  const out = execFileSync(
-    "pnpm",
-    ["exec", "wrangler", "d1", "execute", "DB", ...target, "--json", "--command", sql],
-    { cwd: new URL("../apps/admin/", import.meta.url), encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
-  );
+  const command = ["d1", "execute", "DB", "--json", "--command", sql];
+  const out = remote
+    ? wrangler("admin", [...command, "--remote", ...deployConfigArgs], { capture: true })
+    : execFileSync("pnpm", ["exec", "wrangler", ...command, "--local", "--persist-to", "../../.wrangler/state"], {
+        cwd: new URL("../apps/admin/", import.meta.url),
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "inherit"],
+      });
   const parsed = JSON.parse(out) as { results?: Record<string, unknown>[] }[];
   return parsed.flatMap((r) => r.results ?? []);
 }

@@ -42,9 +42,9 @@
 
 - 두 호스트는 **출처(origin)가 다르다.** 그래서 브라우저의 동일 출처 정책(SOP)이 렌더링 문서와 관리 화면을 기본적으로 분리한다.
 - `workers.dev`는 Public Suffix List에 등록되어 있어 하위 주소끼리도 **다른 사이트(site)**로 취급된다. 렌더링 문서가 관리 호스트로 보내는 하위 요청에는 `SameSite=Lax` 쿠키가 실리지 않는다.
-- 로컬의 `*.localhost`와 회사 도메인의 서브도메인은 **같은 사이트**다. 이 경우 하위 요청에 Lax 쿠키가 실릴 수 있으므로 Fetch Metadata 검사로 막는다 (3.6). 어느 구성이든 같은 코드로 안전해야 한다.
+- 로컬의 `*.localhost`와 자체 도메인의 서브도메인은 **같은 사이트**다. 이 경우 하위 요청에 Lax 쿠키가 실릴 수 있으므로 Fetch Metadata 검사로 막는다 (3.6). 어느 구성이든 같은 코드로 안전해야 한다.
 - 쿠키는 `__Host-` 접두사로 host-only가 되어 다른 호스트로 전송되지 않는다.
-- 나중에 회사 도메인으로 옮길 때는 환경 변수만 바꾼다.
+- 나중에 자체 도메인으로 옮길 때는 환경 변수만 바꾼다.
 
 ## 1.3 저장소 구조
 
@@ -94,7 +94,7 @@ render-box/
 | **신뢰할 수 없는 HTML 코드** (주 위협) | AI가 생성한 코드, 인터넷에서 복사한 코드, 오염된 CDN 패키지 | 렌더링 격리 (5장) |
 | 키 유출 | 메신저나 문서에 키가 노출됨 | 개인별 키 즉시 회수, 세션 즉시 무효화 |
 | 외부 사이트 | 로그인된 사용자를 노린 CSRF, 리다이렉트 악용 | CSRF 토큰, Origin·Fetch Metadata 검사, `next` 검증 |
-| 같은 사이트의 다른 서비스 | 회사 도메인으로 옮긴 뒤 `*.example.com`의 다른 서비스 | host-only 쿠키, Origin·Fetch Metadata 검사 |
+| 같은 사이트의 다른 서비스 | 자체 도메인으로 옮긴 뒤 `*.example.com`의 다른 서비스 | host-only 쿠키, Origin·Fetch Metadata 검사 |
 
 **범위 밖 (수용한 위험):**
 
@@ -756,7 +756,7 @@ Strict-Transport-Security: max-age=31536000
 - 관리 화면 응답은 **압축하지 않는다** ([decisions.md](decisions.md) D-14).
   - Cloudflare 엣지는 HTML 응답을 자동으로 압축한다.
   - `Cache-Control: no-transform`으로 압축을 막는다.
-  - 배포 후 실제로 압축되지 않는지 확인한다 (9.4). 압축이 된다면 회사 도메인으로 옮길 때 Compression Rules로 끈다.
+  - 배포 후 실제로 압축되지 않는지 확인한다 (9.4). 압축이 된다면 자체 도메인으로 옮길 때 Compression Rules로 끈다.
 - 로컬 개발(http)에서는 `Strict-Transport-Security`를 생략한다.
 
 ## 7.5 상태 코드
@@ -820,6 +820,7 @@ UI 디자인 가이드(토큰, 레이아웃, 컴포넌트, 문구)는 [ui.md](ui
 | `DEV_MODE` | 변수 | O | O | 로컬에서만 `1` (9.2) |
 | `STORAGE_LIMIT_MB` | 변수 | O | - | HTML 원본 전체 용량 상한. 기본 400. api 앱도 쓴다 (4.9) |
 | `STORAGE_WARN_PERCENT` | 변수 | O | - | 경고 배너 기준(%). 기본 80 |
+| `HELP_URL` | 변수 | O | - | 상단 바·로그인 화면의 도움말 링크. 기본은 이 저장소의 `docs/guide.md`, 빈 값이면 숨김 |
 | `API_ORIGIN` | 변수 | - | - | API 호스트 출처. api 앱만 쓴다 (api 앱은 `DB`, `APP_ORIGIN`, `RENDER_ORIGIN`도 쓰고 `HANDOFF_SECRET`은 쓰지 않는다) |
 
 - 운영 시크릿은 `wrangler secret put`으로 등록한다.
@@ -844,23 +845,25 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 
 ## 9.3 배포 (로컬 검증 후)
 
-처음 한 번:
+운영 설정은 저장소 밖에 둔다 ([decisions.md](decisions.md) D-36). 저장소의 `apps/*/wrangler.toml`에는 예시값만 있고, 실제 값은 `render-box.deploy.json`(git 제외)에 있다. 원격 명령은 이 둘로 만든 `apps/*/wrangler.deploy.toml`(git 제외)로 실행한다 (`scripts/lib/remote.ts`).
 
-1. `wrangler d1 create render-box`로 D1 데이터베이스를 만들고, ID를 세 앱의 `wrangler.toml`에 넣는다.
-2. 세 앱 `wrangler.toml`의 `APP_ORIGIN`, `RENDER_ORIGIN`, `API_ORIGIN`을 실제 주소(`https://<worker 이름>.<계정 서브도메인>.workers.dev`)로 바꾼다. 다른 호스트의 GET은 이 주소로 이동시키므로 틀리면 모든 화면이 열리지 않는다.
-3. `HANDOFF_SECRET`을 admin과 render에 **같은 값**으로 `wrangler secret put`한다 (api는 쓰지 않는다).
+처음 한 번: `pnpm setup:remote` (`scripts/setup-remote.ts`). 다시 실행해도 있는 것은 그대로 쓴다.
+
+1. `wrangler whoami`로 로그인과 계정을 확인한다. 계정이 여럿이면 `--account`로 고른다. 모든 원격 명령에 `CLOUDFLARE_ACCOUNT_ID`를 넘긴다.
+2. 이름이 `render-box`인 D1을 찾고, 없으면 만든다.
+3. 주소를 모르면 렌더링 Worker를 먼저 배포해 출력된 workers.dev 주소에서 서브도메인을 알아낸다 (`--subdomain`으로 줄 수도 있다).
+4. 렌더링·관리 Worker 중 하나라도 `HANDOFF_SECRET`이 없으면 새 난수를 두 Worker에 같은 값으로 등록한다. 값은 다시 읽을 수 없으므로 한쪽만 있으면 둘 다 새로 등록한다.
+5. 마이그레이션 → 배포 → 9.4 점검. 끝나면 첫 키 발급 명령을 안내한다.
 
 배포할 때마다:
 
-1. `pnpm db:migrate:remote` (새 마이그레이션이 없으면 아무것도 하지 않는다)
-2. `pnpm deploy:prod`: render → admin → api 순서. admin은 배포 전에 CSS·HTMX를 빌드한다 (`build:assets`, 빌드 결과는 저장소에 없다).
-   - `pnpm deploy`는 pnpm 내장 명령이라 스크립트 이름을 `deploy:prod`로 했다.
+1. `pnpm db:migrate:remote` (새 마이그레이션이 있으면 반드시 배포보다 먼저. 새 코드가 새 테이블을 읽는다)
+2. `pnpm deploy:prod`: admin CSS·HTMX 빌드 → render → admin → api. `pnpm deploy`는 pnpm 내장 명령이라 이름을 `deploy:prod`로 했다.
 3. `pnpm check:headers` (9.4)
-4. 처음이면 `pnpm key create --remote ...`로 첫 키를 발급한다.
 
 ## 9.4 배포 후 점검
 
-`pnpm check:headers`(`scripts/check-headers.ts`)가 운영 URL에 실제 요청을 보내 확인한다. 주소는 각 앱의 `wrangler.toml`에서 읽는다.
+`pnpm check:headers`(`scripts/check-headers.ts`)가 운영 URL에 실제 요청을 보내 확인한다. 주소는 `render-box.deploy.json`에서 읽는다.
 
 - 세 호스트의 `/healthz`가 200이다.
 - 렌더링 호스트의 404 응답에 CSP `sandbox`가 있고 `allow-same-origin`이 없다.
@@ -1126,7 +1129,7 @@ MVP 1 완료 후 착수한다.
 
 | 기능 | 메모 |
 | --- | --- |
-| 회사 도메인 | 도메인 DNS가 Cloudflare에 있으면 Workers Custom Domain을 연결하고 `APP_ORIGIN`/`RENDER_ORIGIN`만 바꾼다. 관리 화면 압축은 Compression Rules로 끈다 |
+| 자체 도메인 | 도메인 DNS가 Cloudflare에 있으면 Workers Custom Domain을 연결하고 `APP_ORIGIN`/`RENDER_ORIGIN`만 바꾼다. 관리 화면 압축은 Compression Rules로 끈다 |
 | 저장 용량 확장 | D1 용량이 부족해지면 HTML 원본을 R2로 옮긴다 (결제 수단 등록 필요). `html_blobs`에 저장 위치 컬럼을 추가한다 |
 | 코드 에디터 (Monaco) | 원본은 페이지에 넣지 않고 `/html/:key/source`에서 받아 와 로드한다 |
 | 비로그인 공개 | 문서별 공개 설정 |

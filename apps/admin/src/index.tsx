@@ -50,6 +50,7 @@ import { ERRORS, ErrorPage, type ErrorKind } from "./views/error";
 import { DocumentFormPage, type FormMode, type KeptUpload } from "./views/form";
 import { ListCount, ListPage, ListRegion, type ListData } from "./views/list";
 import { LoginPage } from "./views/login";
+import { setHelpUrl } from "./views/links";
 import { StoragePage } from "./views/storage";
 
 type Ctx = Context<AppEnv>;
@@ -61,6 +62,10 @@ const LOGIN_NEXT_PREFIXES = ["/html", "/auth/render"];
 const app = new Hono<AppEnv>();
 
 app.use("*", adminSecurityHeaders());
+app.use("*", async (c, next) => {
+  setHelpUrl(c.env.HELP_URL);
+  await next();
+});
 app.use("*", canonicalOrigin((env: AppEnv["Bindings"]) => env.APP_ORIGIN));
 
 // DEV_MODE only: records what actually reaches the admin host so isolation

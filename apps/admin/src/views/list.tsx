@@ -2,6 +2,7 @@ import type { SessionUser } from "@render-box/auth";
 import type { StorageUsage } from "@render-box/documents";
 import { formatFullDate, formatRelativeDate, formatSize, isoDate } from "../lib/format";
 import { Alert, AppPage, SafetyLine } from "./layout";
+import { helpSection } from "./links";
 import { Icon } from "./icon";
 import { StorageSummary } from "./storage";
 import * as ui from "./ui";
@@ -77,6 +78,14 @@ function Empty({ data, user }: { data: ListData; user: SessionUser }) {
       <a href="/html/new" class={`${ui.primary} mt-4`}>
         <Icon name="plus" />새 HTML 등록
       </a>
+      {helpSection("ai-도구로-올리기") ? (
+        <p class="mt-4 text-sm text-fg-muted break-keep">
+          Claude Code 같은 AI 도구에서 바로 올릴 수도 있습니다.{" "}
+          <a href={helpSection("ai-도구로-올리기")!} target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">
+            AI 도구로 올리는 방법
+          </a>
+        </p>
+      ) : null}
     </div>
   ) : (
     <div class={ui.empty}>

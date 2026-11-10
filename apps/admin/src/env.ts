@@ -8,6 +8,7 @@ export type Env = {
   HANDOFF_SECRET: string;
   STORAGE_LIMIT_MB?: string;
   STORAGE_WARN_PERCENT?: string;
+  HELP_URL?: string;
   DEV_MODE?: string;
 };
 

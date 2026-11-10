@@ -1,4 +1,4 @@
-import { Alert, Document } from "./layout";
+import { Alert, Document, HelpLink } from "./layout";
 import { Icon } from "./icon";
 import * as ui from "./ui";
 
@@ -59,7 +59,8 @@ export function LoginPage({ next, error }: { next: string | null; error?: string
           </form>
 
           <p class="mt-3 text-xs text-fg-subtle">
-            키는 관리자에게 받으세요. 한 번 로그인하면 30일 동안 유지됩니다.
+            키는 관리자에게 받으세요. 한 번 로그인하면 30일 동안 유지됩니다.{" "}
+            <HelpLink class="text-primary hover:underline" label="사용 안내" />
           </p>
           <hr class="my-4 border-line" />
           <p class={ui.safetyLine}>

@@ -12,12 +12,14 @@
     "typecheck": "for p in apps/admin apps/render apps/api packages/auth packages/db packages/documents packages/shared; do tsc -p $p --noEmit || exit 1; done",
     "db:generate": "pnpm --filter @render-box/db generate",
     "db:migrate:local": "pnpm --filter @render-box/admin exec wrangler d1 migrations apply DB --local --persist-to ../../.wrangler/state",
-    "db:migrate:remote": "pnpm --filter @render-box/admin exec wrangler d1 migrations apply DB --remote",
-    "deploy:prod": "pnpm --filter @render-box/render run deploy && pnpm --filter @render-box/admin run deploy && pnpm --filter @render-box/api run deploy",
+    "db:migrate:remote": "tsx scripts/deploy.ts migrate",
+    "deploy:prod": "tsx scripts/deploy.ts deploy",
     "check:headers": "tsx scripts/check-headers.ts",
     "key": "tsx scripts/key.ts",
     "setup:local": "tsx scripts/setup-local.ts && pnpm db:migrate:local",
-    "test:e2e": "playwright test"
+    "setup:remote": "tsx scripts/setup-remote.ts",
+    "test:e2e": "playwright test",
+    "screenshots": "tsx scripts/screenshots.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261030.1",
@@ -26,5 +28,7 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
-  }
+  },
+  "license": "MIT",
+  "description": "Share HTML prototypes by URL, rendered in isolation on Cloudflare Workers"
 }
