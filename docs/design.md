@@ -120,8 +120,9 @@ render-box/
 
 | 명령 | 설명 |
 | --- | --- |
-| `pnpm key create --name <이름> [--project <slug> --role EDITOR\|VIEWER]` | 키를 발급하고 원문을 1회 출력. 프로젝트를 주면 바로 그 역할로 넣는다 |
-| `pnpm key list` | 이름, prefix, 속한 프로젝트와 역할, 마지막 사용일, 회수 여부 |
+| `pnpm key create --name <이름> [--project <slug> --role EDITOR\|VIEWER] [--admin]` | 키를 발급하고 원문을 1회 출력. 프로젝트를 주면 바로 그 역할로 넣는다. `--admin`이면 관리자 키 (3.9) |
+| `pnpm key list` | 이름, prefix, 관리자 여부, 속한 프로젝트와 역할, 마지막 사용일, 회수 여부 |
+| `pnpm key admin <prefix> on\|off` | 관리자 키로 바꾸거나 되돌린다 (다음 요청부터 반영) |
 | `pnpm key revoke <prefix>` | 회수하고 해당 키의 모든 세션 삭제 |
 
 역할은 키가 아니라 프로젝트 멤버십에 붙는다 (3.9). 역할 변경은 `pnpm project grant`로 한다.
@@ -266,7 +267,11 @@ HTMX 요청 중 세션이 만료되면 `next`에는 요청 경로 대신 `HX-Cur
   - API: 목록·조회는 멤버인 프로젝트만, 올리기·수정은 EDITOR인 프로젝트만
 - 멤버십은 세션에 저장하지 않고 요청마다 읽는다. 권한을 빼면 다음 요청부터 바로 반영된다.
 - **업로드(`PUT /uploads`):** 원본은 아직 프로젝트가 없다. 어느 프로젝트에서든 EDITOR면 올릴 수 있고, 문서에 붙일 때 그 프로젝트의 EDITOR인지 확인한다.
-- **전체 관리자 키는 없다.** 프로젝트·멤버십 관리는 운영자가 CLI로 한다.
+- **관리자 키 (D-38):** `access_keys.is_admin`이 켜진 키는 멤버십 없이 **모든 프로젝트**(나중에 만든 프로젝트 포함)에서 EDITOR와 같은 권한을 가진다. 다른 키가 만든 문서도 보고, 고치고, 교체하고, 지우고, 버전을 복원·삭제할 수 있다.
+  - 키·프로젝트·멤버십 관리는 관리자 키로도 할 수 없다. 웹 화면이나 API에 그런 기능이 없고 CLI로만 한다. 관리자 지정도 CLI로만 한다 (`pnpm key create --admin`, `pnpm key admin <prefix> on|off`).
+  - 관리자 여부도 요청마다 읽는다. 해제하거나 회수하면 다음 요청부터 막힌다.
+  - 구현: 멤버십을 읽을 때 관리자면 모든 프로젝트를 EDITOR로 돌려준다 (`loadAccess`). 그래서 권한 검사 코드는 하나다.
+  - 상단 바의 역할 배지가 "관리자"로 보인다.
 - **격리 수준:** 같은 D1을 쓰고 코드에서 검사하는 논리적 분리다. 팀 사이에 데이터가 절대 섞이면 안 된다면 프로젝트가 아니라 배포를 따로 한다 (`pnpm setup:remote`).
 
 **화면**
@@ -696,6 +701,8 @@ PK: `(blob_id, seq)`
 | slug | TEXT UNIQUE NOT NULL | CLI·API·URL용 이름 (`tamna`) |
 | name | TEXT NOT NULL | 화면 이름 (`탐나`) |
 | created_at | INTEGER NOT NULL | |
+
+`access_keys.is_admin INTEGER NOT NULL DEFAULT 0` (마이그레이션 0003): 모든 프로젝트 관리자 (3.9, D-38).
 
 | key_projects | 타입 | 설명 |
 | --- | --- | --- |
