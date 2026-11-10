@@ -21,6 +21,8 @@ export type DeployConfig = {
   storageWarnPercent?: number;
   // Link for the admin "도움말" menu; "" hides it.
   helpUrl?: string;
+  // Project slug the admin opens first when the viewer has not picked one.
+  defaultProject?: string;
 };
 
 export const WORKER_NAMES: Record<App, string> = {
@@ -73,6 +75,7 @@ export function writeWranglerConfigs(config: DeployConfig) {
       if (config.storageWarnPercent !== undefined) toml = setVar(toml, "STORAGE_WARN_PERCENT", String(config.storageWarnPercent));
     }
     if (app === "admin" && config.helpUrl !== undefined) toml = setVar(toml, "HELP_URL", config.helpUrl);
+    if (app === "admin" && config.defaultProject !== undefined) toml = setVar(toml, "DEFAULT_PROJECT", config.defaultProject);
     const header = "# Generated from wrangler.toml and render-box.deploy.json by scripts/lib/remote.ts. Do not edit.\n";
     writeFileSync(new URL("wrangler.deploy.toml", appDir(app)), header + toml);
   }

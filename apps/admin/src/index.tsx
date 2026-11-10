@@ -46,6 +46,7 @@ import {
   type DocumentFormErrors,
   type DocumentFormValues,
 } from "./lib/document-form";
+import { pickProject } from "./lib/project";
 import { adminSecurityHeaders } from "./lib/security-headers";
 import { loadUser, requireLogin } from "./lib/session";
 import { DetailPage } from "./views/detail";
@@ -217,23 +218,23 @@ app.put("/uploads", requireLogin, async (c) => {
 
 const PROJECT_COOKIE = "rb_project";
 
-// The project the list, the new-document form and the storage page work in:
-// ?project=<slug>, else the last one viewed, else the first (design.md 3.9).
+// See pickProject for the order; a ?project= choice is remembered.
 function currentProject(c: Ctx): Membership | null {
-  const projects = c.get("user")!.projects;
-  const bySlug = (slug: string | undefined) => (slug ? projects.find((p) => p.slug === slug) : undefined);
-  const chosen = bySlug(c.req.query("project"));
-  if (chosen) {
-    setCookie(c, PROJECT_COOKIE, chosen.slug, {
+  const { project, fromQuery } = pickProject(c.get("user")!.projects, {
+    query: c.req.query("project"),
+    cookie: getCookie(c, PROJECT_COOKIE),
+    fallback: c.env.DEFAULT_PROJECT,
+  });
+  if (project && fromQuery) {
+    setCookie(c, PROJECT_COOKIE, project.slug, {
       path: "/",
       httpOnly: true,
       sameSite: "Lax",
       secure: !isDev(c.env),
       maxAge: 365 * 24 * 60 * 60,
     });
-    return chosen;
   }
-  return bySlug(getCookie(c, PROJECT_COOKIE)) ?? projects[0] ?? null;
+  return project;
 }
 
 const membership = (c: Ctx, projectId: number) =>

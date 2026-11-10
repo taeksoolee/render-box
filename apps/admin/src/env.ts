@@ -9,6 +9,7 @@ export type Env = {
   STORAGE_LIMIT_MB?: string;
   STORAGE_WARN_PERCENT?: string;
   HELP_URL?: string;
+  DEFAULT_PROJECT?: string;
   DEV_MODE?: string;
 };
 

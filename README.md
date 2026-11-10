@@ -82,6 +82,7 @@ pnpm key create --remote --name <이름> --project default --role EDITOR
 | `storageLimitMb` | `400` | HTML 전체 용량 상한. 무료 D1 한도(500MB)보다 낮게 둡니다. 유료 플랜이면 올려도 됩니다 |
 | `storageWarnPercent` | `80` | 목록에 경고를 띄우는 사용률 |
 | `helpUrl` | 이 저장소의 [사용 안내](docs/guide.md) | 관리 화면 "도움말" 링크. 팀 안내 페이지로 바꾸거나 `""`로 숨김 |
+| `defaultProject` | (없음) | 관리 화면이 처음 여는 프로젝트 slug (예: `tamna`). 마지막으로 본 프로젝트가 있으면 그쪽이 먼저고, 그 프로젝트 멤버가 아니면 이름순 첫 프로젝트 |
 | `origins` | workers.dev 주소 | 자체 도메인을 쓰면 Cloudflare 대시보드에서 각 Worker에 도메인을 연결한 뒤 `{ "app", "render", "api" }`를 직접 적습니다. 관리와 렌더링은 반드시 다른 호스트여야 합니다 |
 
 바꾼 뒤 `pnpm deploy:prod`로 다시 배포하면 반영됩니다.
