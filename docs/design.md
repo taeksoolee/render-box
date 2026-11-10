@@ -82,7 +82,7 @@ render-box/
 | DB | Cloudflare D1 (SQLite) | HTML 원본도 청크로 저장 |
 | ORM | Drizzle ORM (D1 드라이버) | |
 | Validation | Zod | |
-| 테스트 | Vitest (`@cloudflare/vitest-pool-workers`), Playwright (Chromium) | |
+| 테스트 | Vitest (`@cloudflare/vitest-pool-workers`), Playwright (Chromium, Firefox, WebKit) | |
 | 배포 | `wrangler deploy` | |
 
 ---
@@ -863,7 +863,7 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 
 **CI 필수 — 불변성:** `/auth/render`를 포함한 관리 호스트의 모든 GET 라우트는 호출 전후로 DB가 변하지 않는다. 렌더링 호스트에서는 세션을 발급하는 `/__auth`만 예외다.
 
-**격리 검증 (Playwright, Chromium, 로컬 `wrangler dev`):**
+**격리 검증 (Playwright, Chromium·Firefox·WebKit, 로컬 `wrangler dev`):**
 
 다음 HTML을 등록하고 렌더링한다. 관리 앱에 테스트용 요청 기록 미들웨어를 두고(`DEV_MODE`에서만), **서버에 도착한 요청의 `Cookie`, `Sec-Fetch-Site`, 응답 코드**를 확인한다.
 
@@ -891,7 +891,7 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 | `window.opener` | `null` |
 | meta CSP | 정책 완화 없음 |
 
-**릴리스 전 수동 점검:** 위 항목을 Safari와 Firefox에서 확인한다.
+**릴리스 전 수동 점검:** Playwright WebKit은 실제 Safari와 다르므로, 위 항목을 실제 Safari에서 한 번 더 확인한다 ([decisions.md](decisions.md) D-34).
 
 ## 10.6 CPU 시간 실측 (1단계)
 
@@ -902,51 +902,6 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 - **판정:** 10MB가 한도 안이면 최대 크기를 10MB로 확정한다. 한도를 넘으면 한도 안에 드는 크기로 최대 크기를 낮추고 [prd.md](prd.md)에 반영한다.
 
 ---
-
-# 11. MVP 2 설계 메모
-
-MVP 1 완료 후 착수한다.
-
-## 11.1 저장 전 미리보기
-
-- 두 호스트가 다른 사이트(`workers.dev`)이면, 관리 화면에서 렌더링 호스트로 보내는 POST에는 렌더링 쿠키(`SameSite=Lax`)가 실리지 않는다. 그래서 핸드오프와 같은 방식의 **서명 토큰**으로 인증한다.
-- 흐름:
-  1. 미리보기할 HTML을 `PUT /uploads`로 올린다.
-  2. 관리 앱이 `{ uploadId, keyId, exp: 60초 }`를 서명한 토큰을 발급한다.
-  3. 새 창으로 `RENDER_ORIGIN/__preview?token=...`(GET)을 연다.
-  4. 렌더링 앱이 토큰을 검증하고, 해당 업로드를 렌더링과 같은 헤더로 반환한다.
-- 연결되지 않은 업로드는 4.3 규칙에 따라 정리된다.
-
-## 11.2 플로팅 툴바
-
-- **기능:** 문서 제목, 렌더링 URL 복사, 관리 화면 상세로 이동, 접기
-- **주입:** 문서 **맨 끝**에 `<script src="/__box/toolbar.<hash>.js" data-...>`를 덧붙인다 ([decisions.md](decisions.md) D-16). 마지막 청크를 보낸 뒤 덧붙이면 되므로 CPU 부담이 없다.
-- **`/__box/*` 응답:** `text/javascript`, 장기 캐시, `Cross-Origin-Resource-Policy: cross-origin`, 인증 없음
-- **구현:**
-  - 표준 Web API로 만든다. Custom Element를 등록하지 않는다.
-  - host 요소를 `document.documentElement`에 붙이고 closed Shadow DOM을 쓴다.
-  - host 요소에 인라인 스타일 `all: initial !important; position: fixed !important; z-index: 2147483647 !important`를 준다.
-  - `data-*` 값은 `textContent`로만 출력한다.
-  - 권한 있는 동작은 하지 않는다.
-- `?bare=1`이면 툴바를 주입하지 않는다.
-
-## 11.3 문서 복제
-
-- `POST /html/:key/duplicate` (EDITOR)
-- 원본 청크를 새 blob으로 복사하고, 새 document_key를 발급한다. 제목에 "(사본)"을 붙이고 링크도 복사한다.
-
----
-
-# 12. 이후 확장 기술 메모
-
-| 기능 | 메모 |
-| --- | --- |
-| 버전 관리 | HTML을 교체할 때 이전 blob을 지우지 않고 `html_document_versions(document_id, version, blob_id, ...)`로 남긴다. 저장 용량(D1 500MB)을 고려해 문서당 보관 개수를 제한한다 |
-| 회사 도메인 | 도메인 DNS가 Cloudflare에 있으면 Workers Custom Domain을 연결하고 `APP_ORIGIN`/`RENDER_ORIGIN`만 바꾼다. 관리 화면 압축은 Compression Rules로 끈다 |
-| 저장 용량 확장 | D1 용량이 부족해지면 HTML 원본을 R2로 옮긴다 (결제 수단 등록 필요). `html_blobs`에 저장 위치 컬럼을 추가한다 |
-| 코드 에디터 (Monaco) | 원본은 페이지에 넣지 않고 `/html/:key/source`에서 받아 와 로드한다 |
-| 비로그인 공개 | 문서별 공개 설정 |
-
 
 # 11. API 서버 (`apps/api`): MCP와 REST
 
@@ -1030,7 +985,53 @@ claude mcp add --transport http render-box https://render-box-api.<계정>.worke
 
 ---
 
-# 13. 기술 원칙
+# 12. MVP 2 설계 메모
+
+MVP 1 완료 후 착수한다.
+
+## 12.1 저장 전 미리보기
+
+- 두 호스트가 다른 사이트(`workers.dev`)이면, 관리 화면에서 렌더링 호스트로 보내는 POST에는 렌더링 쿠키(`SameSite=Lax`)가 실리지 않는다. 그래서 핸드오프와 같은 방식의 **서명 토큰**으로 인증한다.
+- 흐름:
+  1. 미리보기할 HTML을 `PUT /uploads`로 올린다.
+  2. 관리 앱이 `{ uploadId, keyId, exp: 60초 }`를 서명한 토큰을 발급한다.
+  3. 새 창으로 `RENDER_ORIGIN/__preview?token=...`(GET)을 연다.
+  4. 렌더링 앱이 토큰을 검증하고, 해당 업로드를 렌더링과 같은 헤더로 반환한다.
+- 연결되지 않은 업로드는 4.3 규칙에 따라 정리된다.
+
+## 12.2 플로팅 툴바
+
+- **기능:** 문서 제목, 렌더링 URL 복사, 관리 화면 상세로 이동, 접기
+- **주입:** 문서 **맨 끝**에 `<script src="/__box/toolbar.<hash>.js" data-...>`를 덧붙인다 ([decisions.md](decisions.md) D-16). 마지막 청크를 보낸 뒤 덧붙이면 되므로 CPU 부담이 없다.
+- **`/__box/*` 응답:** `text/javascript`, 장기 캐시, `Cross-Origin-Resource-Policy: cross-origin`, 인증 없음
+- **구현:**
+  - 표준 Web API로 만든다. Custom Element를 등록하지 않는다.
+  - host 요소를 `document.documentElement`에 붙이고 closed Shadow DOM을 쓴다.
+  - host 요소에 인라인 스타일 `all: initial !important; position: fixed !important; z-index: 2147483647 !important`를 준다.
+  - `data-*` 값은 `textContent`로만 출력한다.
+  - 권한 있는 동작은 하지 않는다.
+- `?bare=1`이면 툴바를 주입하지 않는다.
+
+## 12.3 문서 복제
+
+- `POST /html/:key/duplicate` (EDITOR)
+- 원본 청크를 새 blob으로 복사하고, 새 document_key를 발급한다. 제목에 "(사본)"을 붙이고 링크도 복사한다.
+
+---
+
+# 13. 이후 확장 기술 메모
+
+| 기능 | 메모 |
+| --- | --- |
+| 버전 관리 | HTML을 교체할 때 이전 blob을 지우지 않고 `html_document_versions(document_id, version, blob_id, ...)`로 남긴다. 저장 용량(D1 500MB)을 고려해 문서당 보관 개수를 제한한다 |
+| 회사 도메인 | 도메인 DNS가 Cloudflare에 있으면 Workers Custom Domain을 연결하고 `APP_ORIGIN`/`RENDER_ORIGIN`만 바꾼다. 관리 화면 압축은 Compression Rules로 끈다 |
+| 저장 용량 확장 | D1 용량이 부족해지면 HTML 원본을 R2로 옮긴다 (결제 수단 등록 필요). `html_blobs`에 저장 위치 컬럼을 추가한다 |
+| 코드 에디터 (Monaco) | 원본은 페이지에 넣지 않고 `/html/:key/source`에서 받아 와 로드한다 |
+| 비로그인 공개 | 문서별 공개 설정 |
+
+---
+
+# 14. 기술 원칙
 
 1. 올라온 HTML은 신뢰하지 않는다. 걸러내지 않고 실행하되, 별도 호스트와 sandbox로 격리한다.
 2. 격리를 한 가지 장치에 의존하지 않는다. 출처 분리, CSP sandbox, Fetch Metadata 중 하나가 실패해도 관리 화면은 안전해야 한다.
