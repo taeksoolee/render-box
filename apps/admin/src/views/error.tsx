@@ -23,6 +23,11 @@ export const ERRORS = {
     title: "파일이 너무 큽니다",
     body: "한 번에 올릴 수 있는 HTML은 10MB까지입니다. 이미지가 많이 들어 있다면 이미지 크기를 줄여 다시 만들어 주세요.",
   },
+  currentVersion: {
+    status: 400,
+    title: "현재 버전은 지울 수 없습니다",
+    body: "지금 보여 주는 HTML이라 지우지 않았습니다. 다른 버전을 복원한 뒤 지우거나, 문서 자체를 삭제하세요.",
+  },
   server: {
     status: 500,
     title: "일시적인 오류가 발생했습니다",

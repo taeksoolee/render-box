@@ -18,6 +18,8 @@ const PATHS = {
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
   "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  "rotate-ccw": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
 } as const;
 
 export type IconName = keyof typeof PATHS;

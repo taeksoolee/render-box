@@ -1,8 +1,8 @@
 import { createSession, loadSession, sessionCookieName, sessionCookieOptions, verifyHandoff } from "@render-box/auth";
-import { blobStream, createDb, htmlDocuments } from "@render-box/db";
+import { blobStream, createDb, htmlDocuments, htmlDocumentVersions } from "@render-box/db";
 import { canonicalOrigin, fetchMetadataGuard, isDocumentKey, safeRedirectPath } from "@render-box/shared";
-import { eq } from "drizzle-orm";
-import { Hono } from "hono";
+import { and, eq } from "drizzle-orm";
+import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { isDev, type Env } from "./env";
 import { renderSecurityHeaders } from "./security-headers";
@@ -42,28 +42,51 @@ app.get("/__auth", async (c) => {
   return c.redirect(`${env.APP_ORIGIN}${adminPath ?? "/html"}`, 303);
 });
 
-app.get("/:documentKey", async (c) => {
+const NOT_FOUND = "문서를 찾을 수 없습니다. 삭제되었거나 주소가 잘못되었습니다.";
+
+// The current HTML at /{key}, a previous version at /{key}/v/{seq}
+// (design.md 4.9). Both get the same headers and storage shim.
+async function render(c: Context<{ Bindings: Env }>, seq: number | null) {
   const env = c.env;
-  const documentKey = c.req.param("documentKey");
-  if (!isDocumentKey(documentKey)) return c.text("문서를 찾을 수 없습니다. 삭제되었거나 주소가 잘못되었습니다.", 404);
+  const documentKey = c.req.param("documentKey") ?? "";
+  if (!isDocumentKey(documentKey)) return c.text(NOT_FOUND, 404);
 
   const db = createDb(env.DB);
   const user = await loadSession(db, getCookie(c, sessionCookieName("RENDER", isDev(env))), "RENDER");
   if (!user) {
-    const next = encodeURIComponent(`/${documentKey}`);
+    const next = encodeURIComponent(seq === null ? `/${documentKey}` : `/${documentKey}/v/${seq}`);
     return c.redirect(`${env.APP_ORIGIN}/auth/render?next=${next}`, 302);
   }
 
-  const doc = await db
-    .select({ blobId: htmlDocuments.blobId })
-    .from(htmlDocuments)
-    .where(eq(htmlDocuments.documentKey, documentKey))
-    .get();
-  if (!doc) return c.text("문서를 찾을 수 없습니다. 삭제되었거나 주소가 잘못되었습니다.", 404);
+  let blobId: number | undefined;
+  if (seq === null) {
+    const doc = await db
+      .select({ blobId: htmlDocuments.blobId })
+      .from(htmlDocuments)
+      .where(eq(htmlDocuments.documentKey, documentKey))
+      .get();
+    blobId = doc?.blobId;
+  } else {
+    const version = await db
+      .select({ blobId: htmlDocumentVersions.blobId })
+      .from(htmlDocumentVersions)
+      .innerJoin(htmlDocuments, eq(htmlDocuments.id, htmlDocumentVersions.documentId))
+      .where(and(eq(htmlDocuments.documentKey, documentKey), eq(htmlDocumentVersions.seq, seq)))
+      .get();
+    blobId = version?.blobId;
+  }
+  if (blobId === undefined) return c.text(NOT_FOUND, 404);
 
-  return new Response(blobStream(env.DB, doc.blobId, injectStorageShim), {
+  return new Response(blobStream(env.DB, blobId, injectStorageShim), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
+}
+
+app.get("/:documentKey", (c) => render(c, null));
+app.get("/:documentKey/v/:seq", async (c) => {
+  const raw = c.req.param("seq");
+  if (!/^[1-9][0-9]{0,8}$/.test(raw)) return c.text(NOT_FOUND, 404);
+  return render(c, Number(raw));
 });
 
 app.notFound((c) => c.text("Not Found", 404));

@@ -1,6 +1,6 @@
 import type { ActiveKey } from "@render-box/auth";
 import { z } from "zod";
-import { createHtml, getHtml, listHtml, requireEditor, ServiceError, updateHtml, type Ctx } from "./service";
+import { createHtml, getHtml, listHtml, requireEditor, ServiceError, updateHtml, type Ctx, type HtmlInput } from "./service";
 
 // AI clients send the whole HTML inside one JSON-RPC message, which the
 // Worker must parse; keep it well under the web upload limit so parsing stays
@@ -146,7 +146,7 @@ async function run(ctx: Ctx, name: ToolName, data: unknown): Promise<Record<stri
 
 // The whole HTML arrives inside the JSON-RPC message, so the 1MB cap is
 // checked here, before storing (design.md 11).
-function htmlStream(html: string): ReadableStream<Uint8Array> {
+function htmlStream(html: string): HtmlInput {
   const bytes = new TextEncoder().encode(html);
   if (bytes.length > MAX_MCP_HTML_BYTES) {
     throw new ServiceError(
@@ -155,7 +155,7 @@ function htmlStream(html: string): ReadableStream<Uint8Array> {
       `HTML이 1MB를 넘습니다 (${(bytes.length / 1024 / 1024).toFixed(1)}MB). 이미지 크기를 줄이거나, 큰 파일은 웹 화면이나 REST API로 올려 주세요.`,
     );
   }
-  return new Response(bytes).body!;
+  return { body: new Response(bytes).body!, size: bytes.length };
 }
 
 function result(data: Record<string, unknown>): ToolResult {

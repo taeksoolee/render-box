@@ -11,13 +11,20 @@ import {
   sessionCookieOptions,
   signHandoff,
 } from "@render-box/auth";
-import { blobStream, createDb, deleteBlobStatements, MAX_HTML_BYTES } from "@render-box/db";
+import { blobStream, createDb, MAX_HTML_BYTES } from "@render-box/db";
 import {
+  deleteDocument,
   deleteOrphanBlobs,
+  deleteVersions,
   findAttachableBlob,
   findDocument as findDocumentRecord,
+  findVersion,
   insertDocument,
   listDocuments,
+  listPreviousVersions,
+  listVersions,
+  storageLimits,
+  storageUsage,
   storeUpload,
   updateDocument,
   UploadError,
@@ -43,6 +50,7 @@ import { ERRORS, ErrorPage, type ErrorKind } from "./views/error";
 import { DocumentFormPage, type FormMode, type KeptUpload } from "./views/form";
 import { ListCount, ListPage, ListRegion, type ListData } from "./views/list";
 import { LoginPage } from "./views/login";
+import { StoragePage } from "./views/storage";
 
 type Ctx = Context<AppEnv>;
 
@@ -189,7 +197,10 @@ app.put("/uploads", requireLogin, async (c) => {
   const user = c.get("user")!;
   await deleteOrphanBlobs(c.env.DB, user.keyId);
   try {
-    const blob = await storeUpload(c.env.DB, c.req.raw.body, user.keyId);
+    const blob = await storeUpload(c.env.DB, c.req.raw.body, user.keyId, {
+      limitBytes: storageLimits(c.env).limit,
+      declaredSize: length,
+    });
     return c.json({ uploadId: blob.id, size: blob.size });
   } catch (err) {
     if (err instanceof UploadError) return c.json({ error: err.message }, err.status);
@@ -221,7 +232,8 @@ app.get("/html", requireLogin, async (c) => {
       </>,
     );
   }
-  return c.html(<ListPage data={data} user={user} deleted={c.req.query("deleted") === "1"} />);
+  const storage = await storageUsage(c.env.DB, storageLimits(c.env));
+  return c.html(<ListPage data={data} user={user} storage={storage} deleted={c.req.query("deleted") === "1"} />);
 });
 
 // ---------------------------------------------------------------- documents
@@ -293,32 +305,50 @@ app.post("/html", requireLogin, formLimit, async (c) => {
 app.get("/html/:key", requireLogin, async (c) => {
   const doc = await findDocument(c, c.req.param("key"));
   if (!doc) return errorPage(c, "notFound");
+  const notice = c.req.query("notice");
   return c.html(
     <DetailPage
       doc={doc}
+      versions={await listVersions(c.env.DB, doc.id)}
       user={c.get("user")!}
       renderOrigin={c.env.RENDER_ORIGIN}
       saved={c.req.query("saved") === "1"}
       replaced={c.req.query("replaced") === "1"}
+      notice={notice === "restored" || notice === "version-deleted" || notice === "conflict" ? notice : null}
     />,
   );
 });
 
+// "3" → 3; anything else is not a version number.
+const parseSeq = (s: string | undefined) => (s && /^[1-9][0-9]{0,8}$/.test(s) ? Number(s) : null);
+
 // Source is only ever served as text/plain from the admin host (design.md 4.8).
-async function sourceResponse(c: Ctx, download: boolean) {
+// With a version number, serves that version's HTML (design.md 4.9).
+async function sourceResponse(c: Ctx, download: boolean, versioned: boolean) {
   const doc = await findDocument(c, c.req.param("key") ?? "");
   if (!doc) return errorPage(c, "notFound");
+  let blobId = doc.blobId;
+  let suffix = "";
+  if (versioned) {
+    const seq = parseSeq(c.req.param("seq"));
+    const version = seq ? await findVersion(c.env.DB, doc.id, seq) : null;
+    if (!version) return errorPage(c, "notFound");
+    blobId = version.blobId;
+    suffix = `-v${version.seq}`;
+  }
   const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };
   if (download) {
     const name = doc.title.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").slice(0, 100) || doc.documentKey;
     headers["Content-Disposition"] =
-      `attachment; filename="${doc.documentKey}.html"; filename*=UTF-8''${encodeURIComponent(name)}.html`;
+      `attachment; filename="${doc.documentKey}${suffix}.html"; filename*=UTF-8''${encodeURIComponent(name + suffix)}.html`;
   }
-  return new Response(blobStream(c.env.DB, doc.blobId), { headers });
+  return new Response(blobStream(c.env.DB, blobId), { headers });
 }
 
-app.get("/html/:key/source", requireLogin, (c) => sourceResponse(c, false));
-app.get("/html/:key/download", requireLogin, (c) => sourceResponse(c, true));
+app.get("/html/:key/source", requireLogin, (c) => sourceResponse(c, false, false));
+app.get("/html/:key/download", requireLogin, (c) => sourceResponse(c, true, false));
+app.get("/html/:key/v/:seq/source", requireLogin, (c) => sourceResponse(c, false, true));
+app.get("/html/:key/v/:seq/download", requireLogin, (c) => sourceResponse(c, true, true));
 
 app.get("/html/:key/edit", requireLogin, async (c) => {
   if (!requireEditor(c)) return errorPage(c, "forbidden");
@@ -368,7 +398,6 @@ app.post("/html/:key", requireLogin, formLimit, async (c) => {
       status: 409,
     });
   }
-  if (blob && blob.id !== doc.blobId) await c.env.DB.batch(deleteBlobStatements(c.env.DB, doc.blobId));
   return c.redirect(`/html/${doc.documentKey}?saved=1${blob ? "&replaced=1" : ""}`, 303);
 });
 
@@ -377,11 +406,76 @@ app.post("/html/:key/delete", requireLogin, formLimit, async (c) => {
   if (!(await readForm(c))) return errorPage(c, "csrf");
   const doc = await findDocument(c, c.req.param("key"));
   if (!doc) return errorPage(c, "notFound");
-  await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM html_documents WHERE id = ?").bind(doc.id),
-    ...deleteBlobStatements(c.env.DB, doc.blobId),
-  ]);
+  await deleteDocument(c.env.DB, doc.id);
   return c.redirect("/html?deleted=1", 303);
+});
+
+// ---------------------------------------------------------------- versions
+
+// A new version pointing at the chosen version's blob; no bytes are copied, so
+// this works even when storage is full (design.md 4.9).
+app.post("/html/:key/v/:seq/restore", requireLogin, formLimit, async (c) => {
+  if (!requireEditor(c)) return errorPage(c, "forbidden");
+  const body = await readForm(c);
+  if (!body) return errorPage(c, "csrf");
+  const doc = await findDocument(c, c.req.param("key"));
+  const seq = parseSeq(c.req.param("seq"));
+  const version = doc && seq ? await findVersion(c.env.DB, doc.id, seq) : null;
+  if (!doc || !version) return errorPage(c, "notFound");
+  if (version.blobId === doc.blobId) return c.redirect(`/html/${doc.documentKey}#versions`, 303);
+  const expected = Number(body["version"]);
+  const updated = await updateDocument(c.env.DB, {
+    id: doc.id,
+    version: Number.isSafeInteger(expected) && expected > 0 ? expected : doc.version,
+    title: doc.title,
+    description: doc.description ?? "",
+    links: doc.links,
+    blob: { id: version.blobId, size: version.htmlSize },
+    restoredFrom: version.seq,
+    keyId: c.get("user")!.keyId,
+  });
+  return c.redirect(`/html/${doc.documentKey}?notice=${updated ? "restored" : "conflict"}#versions`, 303);
+});
+
+app.post("/html/:key/v/:seq/delete", requireLogin, formLimit, async (c) => {
+  if (!requireEditor(c)) return errorPage(c, "forbidden");
+  if (!(await readForm(c))) return errorPage(c, "csrf");
+  const doc = await findDocument(c, c.req.param("key"));
+  const seq = parseSeq(c.req.param("seq"));
+  const version = doc && seq ? await findVersion(c.env.DB, doc.id, seq) : null;
+  if (!doc || !version) return errorPage(c, "notFound");
+  // deleteVersions refuses the current version, so a stale page cannot remove it.
+  const deleted = await deleteVersions(c.env.DB, [version.id]);
+  if (deleted === 0) return errorPage(c, "currentVersion");
+  return c.redirect(`/html/${doc.documentKey}?notice=version-deleted#versions`, 303);
+});
+
+// ---------------------------------------------------------------- storage
+
+app.get("/storage", requireLogin, async (c) => {
+  const [usage, versions] = await Promise.all([
+    storageUsage(c.env.DB, storageLimits(c.env)),
+    listPreviousVersions(c.env.DB),
+  ]);
+  const deleted = Number.parseInt(c.req.query("deleted") ?? "", 10);
+  return c.html(
+    <StoragePage
+      user={c.get("user")!}
+      usage={usage}
+      versions={versions}
+      deleted={Number.isSafeInteger(deleted) && deleted >= 0 ? deleted : null}
+    />,
+  );
+});
+
+app.post("/storage/delete", requireLogin, formLimit, async (c) => {
+  if (!requireEditor(c)) return errorPage(c, "forbidden");
+  const body = await readForm(c);
+  if (!body) return errorPage(c, "csrf");
+  const raw = body["version_id"];
+  const ids = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).map((v) => Number(v));
+  const deleted = await deleteVersions(c.env.DB, ids);
+  return c.redirect(`/storage?deleted=${deleted}`, 303);
 });
 
 app.notFound((c) => errorPage(c, "notFound"));

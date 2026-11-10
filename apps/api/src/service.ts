@@ -6,6 +6,9 @@ import {
   hasErrors,
   insertDocument,
   listDocuments,
+  listVersions,
+  STORAGE_FULL_MESSAGE,
+  storageLimits,
   storeUpload,
   updateDocument,
   UploadError,
@@ -26,7 +29,7 @@ export const PAGE_SIZE = 20;
 // tool result with isError; REST maps `status` to the HTTP status.
 export class ServiceError extends Error {
   constructor(
-    readonly status: 400 | 403 | 404 | 409 | 412 | 413 | 422,
+    readonly status: 400 | 403 | 404 | 409 | 412 | 413 | 422 | 507,
     readonly code: string,
     message: string,
   ) {
@@ -69,12 +72,18 @@ function describeErrors(errors: DocumentErrors, rows: LinkRow[]): string {
   return lines.join("\n");
 }
 
-async function storeHtml(ctx: Ctx, body: ReadableStream<Uint8Array>) {
+// `declaredSize` is the Content-Length when known, so a full store is refused
+// before reading the body (design.md 4.9).
+async function storeHtml(ctx: Ctx, body: ReadableStream<Uint8Array>, declaredSize?: number) {
   await deleteOrphanBlobs(ctx.env.DB, ctx.key.id);
   try {
-    return await storeUpload(ctx.env.DB, body, ctx.key.id);
+    return await storeUpload(ctx.env.DB, body, ctx.key.id, {
+      limitBytes: storageLimits(ctx.env).limit,
+      declaredSize,
+    });
   } catch (err) {
     if (!(err instanceof UploadError)) throw err;
+    if (err.message === "storage_full") throw new ServiceError(507, "storage_full", STORAGE_FULL_MESSAGE);
     if (err.message === "too_large") {
       throw new ServiceError(413, "too_large", `HTML이 ${MAX_HTML_BYTES / 1024 / 1024}MB를 넘습니다.`);
     }
@@ -89,16 +98,18 @@ async function loadDocument(ctx: Ctx, documentKey: string): Promise<DocumentReco
   return doc;
 }
 
+export type HtmlInput = { body: ReadableStream<Uint8Array>; size?: number };
+
 export async function createHtml(
   ctx: Ctx,
   input: { title: string; description?: string; links?: LinkInput[] },
-  html: ReadableStream<Uint8Array>,
+  html: HtmlInput,
 ) {
   requireEditor(ctx);
   const title = input.title.trim();
   const description = normalizeDescription(input.description ?? "");
   const links = checkFields({ title, description, links: toLinkRows(input.links ?? []) });
-  const blob = await storeHtml(ctx, html);
+  const blob = await storeHtml(ctx, html.body, html.size);
   const key = await insertDocument(ctx.env.DB, { title, description, links, blob, keyId: ctx.key.id });
   return { document_key: key, title, ...urls(ctx.env, key), html_size: blob.size, version: 1 };
 }
@@ -109,7 +120,7 @@ export async function updateHtml(
   ctx: Ctx,
   documentKey: string,
   input: FieldsInput,
-  html: ReadableStream<Uint8Array> | null,
+  html: HtmlInput | null,
   expectedVersion?: number,
 ) {
   requireEditor(ctx);
@@ -123,7 +134,7 @@ export async function updateHtml(
     links: input.links !== undefined ? toLinkRows(input.links) : doc.links.map((l) => ({ ...l })),
   };
   const links = checkFields(fields);
-  const blob = html ? await storeHtml(ctx, html) : null;
+  const blob = html ? await storeHtml(ctx, html.body, html.size) : null;
 
   const updated = await updateDocument(ctx.env.DB, {
     id: doc.id,
@@ -138,7 +149,7 @@ export async function updateHtml(
     if (blob) await ctx.env.DB.batch(deleteBlobStatements(ctx.env.DB, blob.id));
     throw new ServiceError(409, "conflict", "다른 사람이 방금 이 문서를 수정했습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.");
   }
-  if (blob) await ctx.env.DB.batch(deleteBlobStatements(ctx.env.DB, doc.blobId));
+  // The previous HTML stays as a version (design.md 4.9).
   return {
     document_key: doc.documentKey,
     title: fields.title,
@@ -191,5 +202,22 @@ export async function getHtml(ctx: Ctx, documentKey: string) {
       updated_at: new Date(doc.updatedAt).toISOString(),
     },
     source: () => blobStream(ctx.env.DB, doc.blobId),
+  };
+}
+
+export async function listHtmlVersions(ctx: Ctx, documentKey: string) {
+  const doc = await loadDocument(ctx, documentKey);
+  const versions = await listVersions(ctx.env.DB, doc.id);
+  return {
+    document_key: doc.documentKey,
+    versions: versions.map((v, i) => ({
+      seq: v.seq,
+      current: i === 0,
+      render_url: i === 0 ? `${ctx.env.RENDER_ORIGIN}/${doc.documentKey}` : `${ctx.env.RENDER_ORIGIN}/${doc.documentKey}/v/${v.seq}`,
+      html_size: v.htmlSize,
+      restored_from: v.restoredFrom,
+      created_by: v.createdByName,
+      created_at: new Date(v.createdAt).toISOString(),
+    })),
   };
 }

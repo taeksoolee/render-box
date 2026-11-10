@@ -4,7 +4,17 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Env } from "./env";
-import { createHtml, getHtml, listHtml, ServiceError, updateHtml, type Ctx, type LinkInput } from "./service";
+import {
+  createHtml,
+  getHtml,
+  listHtml,
+  listHtmlVersions,
+  ServiceError,
+  updateHtml,
+  type Ctx,
+  type HtmlInput,
+  type LinkInput,
+} from "./service";
 
 // REST API for scripts and CI (design.md 11.4). HTML travels as the raw
 // request body and is stored in 1MB chunks without decoding, so the web
@@ -33,13 +43,14 @@ function parseLink(value: string): LinkInput {
   return bar === -1 ? { url: value } : { label: value.slice(0, bar), url: value.slice(bar + 1) };
 }
 
-function htmlBody(c: Context<Rest>): ReadableStream<Uint8Array> {
+function htmlBody(c: Context<Rest>): HtmlInput {
   const header = c.req.header("Content-Length");
   if (header !== undefined && Number(header) > MAX_HTML_BYTES) {
     throw new ServiceError(413, "too_large", `HTML이 ${MAX_HTML_BYTES / 1024 / 1024}MB를 넘습니다.`);
   }
   if (header === "0" || !c.req.raw.body) throw new ServiceError(422, "empty", "HTML 내용이 비어 있습니다.");
-  return c.req.raw.body;
+  const size = Number(header);
+  return { body: c.req.raw.body, size: Number.isFinite(size) ? size : undefined };
 }
 
 const patchSchema = z.object({
@@ -77,6 +88,8 @@ rest.get("/html/:key", async (c) => {
   const { info } = await getHtml(ctx(c), c.req.param("key"));
   return c.json(info, 200, { ETag: etag(info.version) });
 });
+
+rest.get("/html/:key/versions", async (c) => c.json(await listHtmlVersions(ctx(c), c.req.param("key"))));
 
 rest.get("/html/:key/source", async (c) => {
   const { info, source } = await getHtml(ctx(c), c.req.param("key"));

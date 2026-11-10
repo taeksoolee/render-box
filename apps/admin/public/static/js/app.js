@@ -596,6 +596,8 @@
             $("[data-image-bulk]", images).focus();
           } else if (err.message === "too_large") {
             setState("error", "10MB를 넘는 파일은 올릴 수 없습니다.");
+          } else if (err.message === "storage_full") {
+            setState("error", "저장 공간이 부족합니다. 목록의 저장 공간에서 이전 버전이나 안 쓰는 문서를 지운 뒤 다시 저장해 주세요.");
           } else {
             submitError.hidden = false;
             submitError.focus && submitError.focus();

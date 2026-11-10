@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { customType, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { customType, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Chunk bytes are read and written through chunks.ts; this type only shapes
 // the migration (BLOB column) without depending on Node's Buffer.
@@ -91,4 +91,31 @@ export const htmlDocuments = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (t) => [index("html_documents_updated_at_idx").on(t.updatedAt), index("html_documents_blob_id_idx").on(t.blobId)],
+);
+
+// Every HTML a document has had, including the current one (the highest seq).
+// Restoring adds a row that points at an older blob; blobs never change, so
+// they can be shared (design.md 4.9, 6.6).
+export const htmlDocumentVersions = sqliteTable(
+  "html_document_versions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    documentId: integer("document_id")
+      .notNull()
+      .references(() => htmlDocuments.id),
+    seq: integer("seq").notNull(),
+    blobId: integer("blob_id")
+      .notNull()
+      .references(() => htmlBlobs.id),
+    htmlSize: integer("html_size").notNull(),
+    restoredFrom: integer("restored_from"),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => accessKeys.id),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("html_document_versions_document_seq_unique").on(t.documentId, t.seq),
+    index("html_document_versions_blob_id_idx").on(t.blobId),
+  ],
 );

@@ -15,6 +15,9 @@ inspector_port = 9230
 [vars]
 APP_ORIGIN = "https://render-box-admin.leets1490.workers.dev"
 RENDER_ORIGIN = "https://render-box-render.leets1490.workers.dev"
+# Total HTML storage cap and warning threshold (design.md 4.9).
+STORAGE_LIMIT_MB = "400"
+STORAGE_WARN_PERCENT = "80"
 
 [[d1_databases]]
 binding = "DB"

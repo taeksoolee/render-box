@@ -46,6 +46,7 @@ export const rowDesc = "mt-0.5 truncate text-xs text-fg-subtle";
 export const rowAction =
   "relative z-10 inline-flex items-center gap-1 rounded-md px-2 h-8 text-sm text-primary hover:bg-primary-soft whitespace-nowrap " +
   "focus-visible:outline-2 focus-visible:outline-focus";
+export const rowActionDanger = rowAction.replace("text-primary hover:bg-primary-soft", "text-danger-fg hover:bg-danger-soft");
 
 const alert = "flex gap-3 rounded-lg border p-4 text-sm";
 export const alertStyles = {

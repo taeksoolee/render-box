@@ -58,7 +58,7 @@ claude mcp add --transport http render-box "$RB_API/mcp" \
 | 도구 | 권한 | 하는 일 |
 | --- | --- | --- |
 | `upload_html` | 편집자 | 새 문서 올리기 → `render_url` |
-| `update_html` | 편집자 | 넘긴 항목(HTML, 제목, 설명, 링크)만 바꾸기. 주소는 그대로 |
+| `update_html` | 편집자 | 넘긴 항목(HTML, 제목, 설명, 링크)만 바꾸기. 주소는 그대로, 이전 HTML은 버전으로 남음 |
 | `list_html` | 전체 | 제목이나 문서 키로 찾기 |
 | `get_html` | 전체 | 문서 정보와 HTML 원본(1MB 이하) |
 
@@ -138,7 +138,10 @@ curl -X PATCH "$RB_API/api/v1/html/<문서키>" \
 curl "$RB_API/api/v1/html" -H "Authorization: Bearer $RB_KEY" --url-query "q=회원가입"   # 목록·검색 (20개씩, &page=2 …)
 curl "$RB_API/api/v1/html/<문서키>" -H "Authorization: Bearer $RB_KEY"                 # 문서 정보
 curl "$RB_API/api/v1/html/<문서키>/source" -H "Authorization: Bearer $RB_KEY" -o doc.html  # 원본 내려받기
+curl "$RB_API/api/v1/html/<문서키>/versions" -H "Authorization: Bearer $RB_KEY"       # 버전 목록
 ```
+
+HTML을 바꿀 때마다 이전 HTML은 버전으로 남습니다. 버전 목록의 `render_url`로 이전 버전을 볼 수 있고, 복원과 삭제는 웹 화면에서 합니다.
 
 ### 다른 사람의 수정 덮어쓰지 않기 (선택)
 
@@ -171,6 +174,7 @@ curl -X PUT "$RB_API/api/v1/html/<문서키>/source" \
 | 413 | `too_large` | HTML이 10MB를 넘음 |
 | 422 | `empty`, `nul_byte` | 본문이 비었거나 HTML이 아닌 파일(NUL 문자 포함) |
 | 429 | `locked` | 키 인증 실패가 많아 잠김. 30초 뒤 다시 시도 |
+| 507 | `storage_full` | 저장 공간(기본 400MB)이 가득 참. 웹 화면의 저장 공간에서 이전 버전이나 안 쓰는 문서를 지운 뒤 다시 시도 |
 
 ---
 

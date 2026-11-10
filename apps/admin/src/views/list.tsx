@@ -1,7 +1,9 @@
 import type { SessionUser } from "@render-box/auth";
+import type { StorageUsage } from "@render-box/documents";
 import { formatFullDate, formatRelativeDate, formatSize, isoDate } from "../lib/format";
 import { Alert, AppPage, SafetyLine } from "./layout";
 import { Icon } from "./icon";
+import { StorageSummary } from "./storage";
 import * as ui from "./ui";
 
 export type ListRow = {
@@ -194,12 +196,23 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
   );
 }
 
-export function ListPage({ data, user, deleted }: { data: ListData; user: SessionUser; deleted: boolean }) {
+export function ListPage({
+  data,
+  user,
+  storage,
+  deleted,
+}: {
+  data: ListData;
+  user: SessionUser;
+  storage: StorageUsage;
+  deleted: boolean;
+}) {
   return (
     <AppPage title="문서" user={user} width="max-w-5xl">
       <div class="space-y-4">
         <SafetyLine />
         {deleted ? <Alert kind="success" title="문서를 삭제했습니다." /> : null}
+        <StorageSummary usage={storage} />
         <div class="flex items-center justify-between gap-2">
           <h1 class="text-xl font-semibold">문서</h1>
           {user.role === "EDITOR" ? (

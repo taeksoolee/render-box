@@ -83,16 +83,24 @@ export async function insertDocument(
   },
 ): Promise<string> {
   const now = input.now ?? Date.now();
+  // The document and its version 1 go in one transaction (design.md 4.9).
   const insert = (documentKey: string) =>
-    d1
-      .prepare(
-        `INSERT INTO html_documents
-           (document_key, title, description, links, blob_id, html_size, version, created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-      )
-      .bind(documentKey, input.title, input.description || null, JSON.stringify(input.links), input.blob.id,
-        input.blob.size, input.keyId, input.keyId, now, now)
-      .run();
+    d1.batch([
+      d1
+        .prepare(
+          `INSERT INTO html_documents
+             (document_key, title, description, links, blob_id, html_size, version, created_by, updated_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+        )
+        .bind(documentKey, input.title, input.description || null, JSON.stringify(input.links), input.blob.id,
+          input.blob.size, input.keyId, input.keyId, now, now),
+      d1
+        .prepare(
+          `INSERT INTO html_document_versions (document_id, seq, blob_id, html_size, created_by, created_at)
+           SELECT id, 1, blob_id, html_size, created_by, created_at FROM html_documents WHERE document_key = ?`,
+        )
+        .bind(documentKey),
+    ]);
 
   // One retry on the (practically impossible) key collision (design.md 4.1).
   let documentKey = generateDocumentKey();
@@ -107,7 +115,8 @@ export async function insertDocument(
 }
 
 // Optimistic update: false when someone saved a newer version first. A new
-// blob replaces the HTML; without one the current HTML is kept (design.md 4.8).
+// blob replaces the HTML and becomes the next version; without one the current
+// HTML is kept (design.md 4.8, 4.9). The previous blob stays as a version.
 export async function updateDocument(
   d1: D1Database,
   input: {
@@ -117,11 +126,14 @@ export async function updateDocument(
     description: string;
     links: DocumentLink[];
     blob: { id: number; size: number } | null;
+    // seq of the version being restored, when the blob is an older one.
+    restoredFrom?: number;
     keyId: number;
     now?: number;
   },
 ): Promise<boolean> {
-  const updated = await d1
+  const now = input.now ?? Date.now();
+  const update = d1
     .prepare(
       `UPDATE html_documents
        SET title = ?, description = ?, links = ?, blob_id = COALESCE(?, blob_id), html_size = COALESCE(?, html_size),
@@ -130,7 +142,48 @@ export async function updateDocument(
        RETURNING id`,
     )
     .bind(input.title, input.description || null, JSON.stringify(input.links), input.blob?.id ?? null,
-      input.blob?.size ?? null, input.keyId, input.now ?? Date.now(), input.id, input.version)
-    .first<{ id: number }>();
-  return updated !== null;
+      input.blob?.size ?? null, input.keyId, now, input.id, input.version);
+  if (!input.blob) return (await update.first<{ id: number }>()) !== null;
+
+  // Same transaction: the version row is added only if the UPDATE above won,
+  // which is when the row now carries exactly what it just wrote.
+  const addVersion = d1
+    .prepare(
+      `INSERT INTO html_document_versions (document_id, seq, blob_id, html_size, restored_from, created_by, created_at)
+       SELECT d.id, COALESCE((SELECT MAX(v.seq) FROM html_document_versions v WHERE v.document_id = d.id), 0) + 1,
+              ?, ?, ?, ?, ?
+       FROM html_documents d
+       WHERE d.id = ? AND d.version = ? AND d.blob_id = ? AND d.updated_by = ? AND d.updated_at = ?`,
+    )
+    .bind(input.blob.id, input.blob.size, input.restoredFrom ?? null, input.keyId, now,
+      input.id, input.version + 1, input.blob.id, input.keyId, now);
+  const [updated] = await d1.batch<{ id: number }>([update, addVersion]);
+  return (updated?.results.length ?? 0) > 0;
+}
+
+// Deletes the chunks and blob only when no document or version points at it
+// any more. Safe to run for a blob that is still shared: it then does nothing.
+export function releaseBlobStatements(d1: D1Database, blobId: number): D1PreparedStatement[] {
+  const unused = `NOT EXISTS (SELECT 1 FROM html_documents WHERE blob_id = ?1)
+    AND NOT EXISTS (SELECT 1 FROM html_document_versions WHERE blob_id = ?1)`;
+  return [
+    d1.prepare(`DELETE FROM html_chunks WHERE blob_id = ?1 AND ${unused}`).bind(blobId),
+    d1.prepare(`DELETE FROM html_blobs WHERE id = ?1 AND ${unused}`).bind(blobId),
+  ];
+}
+
+// The document, all its versions, and the blobs nothing else uses.
+export async function deleteDocument(d1: D1Database, documentId: number): Promise<void> {
+  const { results } = await d1
+    .prepare(
+      `SELECT DISTINCT blob_id AS blobId FROM html_document_versions WHERE document_id = ?1
+       UNION SELECT blob_id FROM html_documents WHERE id = ?1`,
+    )
+    .bind(documentId)
+    .all<{ blobId: number }>();
+  await d1.batch([
+    d1.prepare("DELETE FROM html_document_versions WHERE document_id = ?").bind(documentId),
+    d1.prepare("DELETE FROM html_documents WHERE id = ?").bind(documentId),
+    ...results.flatMap((r) => releaseBlobStatements(d1, r.blobId)),
+  ]);
 }
