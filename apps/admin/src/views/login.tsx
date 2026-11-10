@@ -8,7 +8,8 @@ export function LoginPage({ next, error }: { next: string | null; error?: string
     <Document title="로그인">
       <main id="main" class="grid min-h-dvh place-items-center px-4 py-8">
         <div class={`${ui.card} w-full max-w-sm`}>
-          <h1 class="text-center text-2xl font-semibold">render-box</h1>
+          <img src="/static/logo.svg" alt="" width="48" height="48" class="mx-auto size-12" />
+          <h1 class="mt-3 text-center text-2xl font-semibold">render-box</h1>
           <p class="mt-1 text-center text-fg-muted">HTML 파일을 주소 하나로 공유하는 곳</p>
 
           {showDocHint ? (

@@ -21,6 +21,8 @@ export function Document({ title, children }: { title: string; children: Child }
             content='{"allowEval":false,"includeIndicatorStyles":false,"selfRequestsOnly":true}'
           />
           <title>{title === "render-box" ? title : `${title} · render-box`}</title>
+          <link rel="icon" href="/static/logo.svg" type="image/svg+xml" />
+          <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
           <link rel="stylesheet" href="/static/app.css" />
           <script src="/static/js/htmx.min.js" defer></script>
           <script src="/static/js/app.js" defer></script>
@@ -45,7 +47,8 @@ export function TopBar({ user }: { user: SessionUser }) {
   return (
     <header class="sticky top-0 z-10 h-14 border-b border-line bg-surface">
       <div class="mx-auto flex h-full max-w-5xl items-center justify-between px-4 sm:px-6">
-        <a href="/html" class="font-semibold text-fg">
+        <a href="/html" class="inline-flex items-center gap-2 font-semibold text-fg">
+          <img src="/static/logo.svg" alt="" width="24" height="24" class="size-6" />
           render-box
         </a>
         <div class="flex items-center gap-2">

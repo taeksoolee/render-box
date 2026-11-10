@@ -1,4 +1,4 @@
-# render-box
+# <img src="apps/admin/public/static/logo.svg" alt="" width="32" height="32" align="top" /> render-box
 
 [![test](https://github.com/taeksoolee/render-box/actions/workflows/test.yml/badge.svg)](https://github.com/taeksoolee/render-box/actions/workflows/test.yml)
 [![license](https://img.shields.io/github/license/taeksoolee/render-box)](LICENSE)
