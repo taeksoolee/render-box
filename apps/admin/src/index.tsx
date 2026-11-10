@@ -1,6 +1,8 @@
 import {
   clientIp,
   createSession,
+  editsAny,
+  type Membership,
   deleteExpiredSessions,
   deleteSessionFamily,
   findActiveKey,
@@ -23,6 +25,7 @@ import {
   listDocuments,
   listPreviousVersions,
   listVersions,
+  projectUsage,
   storageLimits,
   storageUsage,
   storeUpload,
@@ -33,7 +36,7 @@ import {
 import { canonicalOrigin, fetchMetadataGuard, safeRedirectPath } from "@render-box/shared";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { deleteCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { isDev, type AppEnv } from "./env";
 import { csrfOk, originOk } from "./lib/csrf";
 import {
@@ -98,10 +101,6 @@ const formLimit = bodyLimit({ maxSize: FORM_LIMIT, onError: (c) => errorPage(c a
 
 function errorPage(c: Ctx, kind: ErrorKind) {
   return c.html(<ErrorPage kind={kind} user={c.get("user")} />, ERRORS[kind].status);
-}
-
-function requireEditor(c: Ctx) {
-  return c.get("user")?.role === "EDITOR";
 }
 
 // Parses a small urlencoded form and enforces Origin + CSRF token.
@@ -193,7 +192,8 @@ app.get("/auth/render", requireLogin, async (c) => {
 
 // Raw HTML bytes, stored as 1MB chunks without decoding (design.md 4.3).
 app.put("/uploads", requireLogin, async (c) => {
-  if (!requireEditor(c)) return c.json({ error: "forbidden" }, 403);
+  // Not tied to a project yet; attaching it checks the project (design.md 3.9).
+  if (!editsAny(c.get("user")!.projects)) return c.json({ error: "forbidden" }, 403);
   if (!originOk(c) || !csrfOk(c, c.req.header("X-CSRF-Token"))) return c.json({ error: "csrf" }, 403);
   const length = Number(c.req.header("Content-Length") ?? "NaN");
   if (!Number.isFinite(length) || length > MAX_HTML_BYTES) return c.json({ error: "too_large" }, 413);
@@ -213,12 +213,46 @@ app.put("/uploads", requireLogin, async (c) => {
   }
 });
 
+// ---------------------------------------------------------------- projects
+
+const PROJECT_COOKIE = "rb_project";
+
+// The project the list, the new-document form and the storage page work in:
+// ?project=<slug>, else the last one viewed, else the first (design.md 3.9).
+function currentProject(c: Ctx): Membership | null {
+  const projects = c.get("user")!.projects;
+  const bySlug = (slug: string | undefined) => (slug ? projects.find((p) => p.slug === slug) : undefined);
+  const chosen = bySlug(c.req.query("project"));
+  if (chosen) {
+    setCookie(c, PROJECT_COOKIE, chosen.slug, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: !isDev(c.env),
+      maxAge: 365 * 24 * 60 * 60,
+    });
+    return chosen;
+  }
+  return bySlug(getCookie(c, PROJECT_COOKIE)) ?? projects[0] ?? null;
+}
+
+const membership = (c: Ctx, projectId: number) =>
+  c.get("user")!.projects.find((p) => p.projectId === projectId) ?? null;
+
+const projectQuery = (p: Membership) => `project=${encodeURIComponent(p.slug)}`;
+
 // ---------------------------------------------------------------- list
 
 app.get("/html", requireLogin, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
   const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
-  const { rows, total } = await listDocuments(c.env.DB, { q, page, pageSize: PAGE_SIZE });
+  const project = currentProject(c);
+  const { rows, total } = await listDocuments(c.env.DB, {
+    q,
+    page,
+    pageSize: PAGE_SIZE,
+    projectIds: project ? [project.projectId] : [],
+  });
 
   const data: ListData = {
     rows,
@@ -227,6 +261,7 @@ app.get("/html", requireLogin, async (c) => {
     pageSize: PAGE_SIZE,
     q,
     renderOrigin: c.env.RENDER_ORIGIN,
+    project,
   };
   const user = c.get("user")!;
   if (c.req.header("HX-Request") === "true") {
@@ -245,17 +280,31 @@ app.get("/html", requireLogin, async (c) => {
 
 type DocRow = DocumentRecord;
 
-const findDocument = (c: Ctx, documentKey: string) => findDocumentRecord(c.env.DB, documentKey);
+// A document the viewer may see, with their membership in its project.
+// Documents of other projects look exactly like missing ones (design.md 3.9).
+async function findDocument(c: Ctx, documentKey: string): Promise<{ doc: DocRow; project: Membership } | null> {
+  const doc = await findDocumentRecord(c.env.DB, documentKey);
+  const project = doc ? membership(c, doc.projectId) : null;
+  return doc && project ? { doc, project } : null;
+}
 
 const emptyValues = (): DocumentFormValues => ({ title: "", description: "", links: [], uploadId: null, version: null });
 
 function renderForm(
   c: Ctx,
-  opts: { mode: FormMode; values: DocumentFormValues; errors?: DocumentFormErrors; kept?: KeptUpload; status?: 200 | 409 | 422 },
+  opts: {
+    project: Membership;
+    mode: FormMode;
+    values: DocumentFormValues;
+    errors?: DocumentFormErrors;
+    kept?: KeptUpload;
+    status?: 200 | 409 | 422;
+  },
 ) {
   return c.html(
     <DocumentFormPage
       user={c.get("user")!}
+      project={opts.project}
       mode={opts.mode}
       values={opts.values}
       errors={opts.errors ?? {}}
@@ -278,15 +327,18 @@ function editMode(doc: DocRow, conflict = false): FormMode {
 }
 
 app.get("/html/new", requireLogin, (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
-  return renderForm(c, { mode: { kind: "create" }, values: emptyValues() });
+  const project = currentProject(c);
+  if (project?.role !== "EDITOR") return errorPage(c, "forbidden");
+  return renderForm(c, { project, mode: { kind: "create" }, values: emptyValues() });
 });
 
 app.post("/html", requireLogin, formLimit, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
   const body = await readForm(c);
   if (!body) return errorPage(c, "csrf");
   const user = c.get("user")!;
+  // The project comes from the form, not the cookie: the page may be stale.
+  const project = user.projects.find((p) => p.slug === body["project"]);
+  if (project?.role !== "EDITOR") return errorPage(c, "forbidden");
 
   const values = readDocumentForm(body);
   const { errors, links } = validateDocumentForm(values);
@@ -294,7 +346,7 @@ app.post("/html", requireLogin, formLimit, async (c) => {
   if (!values.uploadId) errors.html = "HTML 파일을 올리거나 코드를 붙여넣어 주세요.";
   else if (!blob) errors.html = "올린 HTML을 찾을 수 없습니다. 파일을 다시 올려 주세요.";
   if (hasErrors(errors)) {
-    return renderForm(c, { mode: { kind: "create" }, values, errors, kept: blob, status: 422 });
+    return renderForm(c, { project, mode: { kind: "create" }, values, errors, kept: blob, status: 422 });
   }
 
   const documentKey = await insertDocument(c.env.DB, {
@@ -302,20 +354,23 @@ app.post("/html", requireLogin, formLimit, async (c) => {
     description: values.description,
     links,
     blob: blob!,
+    projectId: project.projectId,
     keyId: user.keyId,
   });
   return c.redirect(`/html/${documentKey}?saved=1`, 303);
 });
 
 app.get("/html/:key", requireLogin, async (c) => {
-  const doc = await findDocument(c, c.req.param("key"));
-  if (!doc) return errorPage(c, "notFound");
+  const found = await findDocument(c, c.req.param("key"));
+  if (!found) return errorPage(c, "notFound");
+  const { doc, project } = found;
   const notice = c.req.query("notice");
   return c.html(
     <DetailPage
       doc={doc}
       versions={await listVersions(c.env.DB, doc.id)}
       user={c.get("user")!}
+      project={project}
       renderOrigin={c.env.RENDER_ORIGIN}
       saved={c.req.query("saved") === "1"}
       replaced={c.req.query("replaced") === "1"}
@@ -330,8 +385,9 @@ const parseSeq = (s: string | undefined) => (s && /^[1-9][0-9]{0,8}$/.test(s) ? 
 // Source is only ever served as text/plain from the admin host (design.md 4.8).
 // With a version number, serves that version's HTML (design.md 4.9).
 async function sourceResponse(c: Ctx, download: boolean, versioned: boolean) {
-  const doc = await findDocument(c, c.req.param("key") ?? "");
-  if (!doc) return errorPage(c, "notFound");
+  const found = await findDocument(c, c.req.param("key") ?? "");
+  if (!found) return errorPage(c, "notFound");
+  const { doc } = found;
   let blobId = doc.blobId;
   let suffix = "";
   if (versioned) {
@@ -356,21 +412,24 @@ app.get("/html/:key/v/:seq/source", requireLogin, (c) => sourceResponse(c, false
 app.get("/html/:key/v/:seq/download", requireLogin, (c) => sourceResponse(c, true, true));
 
 app.get("/html/:key/edit", requireLogin, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
-  const doc = await findDocument(c, c.req.param("key"));
-  if (!doc) return errorPage(c, "notFound");
+  const found = await findDocument(c, c.req.param("key"));
+  if (!found) return errorPage(c, "notFound");
+  const { doc, project } = found;
+  if (project.role !== "EDITOR") return errorPage(c, "forbidden");
   return renderForm(c, {
+    project,
     mode: editMode(doc),
     values: { title: doc.title, description: doc.description ?? "", links: doc.links, uploadId: null, version: doc.version },
   });
 });
 
 app.post("/html/:key", requireLogin, formLimit, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
   const body = await readForm(c);
   if (!body) return errorPage(c, "csrf");
-  const doc = await findDocument(c, c.req.param("key"));
-  if (!doc) return errorPage(c, "notFound");
+  const found = await findDocument(c, c.req.param("key"));
+  if (!found) return errorPage(c, "notFound");
+  const { doc, project } = found;
+  if (project.role !== "EDITOR") return errorPage(c, "forbidden");
   const user = c.get("user")!;
 
   const values = readDocumentForm(body);
@@ -379,7 +438,7 @@ app.post("/html/:key", requireLogin, formLimit, async (c) => {
   const blob = values.uploadId ? await findAttachableBlob(c.env.DB, values.uploadId, user.keyId) : null;
   if (values.uploadId && !blob) errors.html = "올린 HTML을 찾을 수 없습니다. 파일을 다시 올려 주세요.";
   if (!values.version) values.version = doc.version;
-  if (hasErrors(errors)) return renderForm(c, { mode: editMode(doc), values, errors, kept: blob, status: 422 });
+  if (hasErrors(errors)) return renderForm(c, { project, mode: editMode(doc), values, errors, kept: blob, status: 422 });
 
   const updated = await updateDocument(c.env.DB, {
     id: doc.id,
@@ -397,8 +456,9 @@ app.post("/html/:key", requireLogin, formLimit, async (c) => {
     const latest = await findDocument(c, doc.documentKey);
     if (!latest) return errorPage(c, "notFound");
     return renderForm(c, {
-      mode: editMode(latest, true),
-      values: { ...values, version: latest.version },
+      project,
+      mode: editMode(latest.doc, true),
+      values: { ...values, version: latest.doc.version },
       kept: blob,
       status: 409,
     });
@@ -407,26 +467,34 @@ app.post("/html/:key", requireLogin, formLimit, async (c) => {
 });
 
 app.post("/html/:key/delete", requireLogin, formLimit, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
   if (!(await readForm(c))) return errorPage(c, "csrf");
-  const doc = await findDocument(c, c.req.param("key"));
-  if (!doc) return errorPage(c, "notFound");
-  await deleteDocument(c.env.DB, doc.id);
-  return c.redirect("/html?deleted=1", 303);
+  const found = await findDocument(c, c.req.param("key"));
+  if (!found) return errorPage(c, "notFound");
+  if (found.project.role !== "EDITOR") return errorPage(c, "forbidden");
+  await deleteDocument(c.env.DB, found.doc.id);
+  return c.redirect(`/html?${projectQuery(found.project)}&deleted=1`, 303);
 });
 
 // ---------------------------------------------------------------- versions
 
+// The document (must be editable) and one of its versions, or an error page.
+async function editableVersion(c: Ctx) {
+  const found = await findDocument(c, c.req.param("key") ?? "");
+  const seq = parseSeq(c.req.param("seq"));
+  const version = found && seq ? await findVersion(c.env.DB, found.doc.id, seq) : null;
+  if (!found || !version) return errorPage(c, "notFound");
+  if (found.project.role !== "EDITOR") return errorPage(c, "forbidden");
+  return { ...found, version };
+}
+
 // A new version pointing at the chosen version's blob; no bytes are copied, so
 // this works even when storage is full (design.md 4.9).
 app.post("/html/:key/v/:seq/restore", requireLogin, formLimit, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
   const body = await readForm(c);
   if (!body) return errorPage(c, "csrf");
-  const doc = await findDocument(c, c.req.param("key"));
-  const seq = parseSeq(c.req.param("seq"));
-  const version = doc && seq ? await findVersion(c.env.DB, doc.id, seq) : null;
-  if (!doc || !version) return errorPage(c, "notFound");
+  const found = await editableVersion(c);
+  if (found instanceof Response) return found;
+  const { doc, version } = found;
   if (version.blobId === doc.blobId) return c.redirect(`/html/${doc.documentKey}#versions`, 303);
   const expected = Number(body["version"]);
   const updated = await updateDocument(c.env.DB, {
@@ -443,43 +511,47 @@ app.post("/html/:key/v/:seq/restore", requireLogin, formLimit, async (c) => {
 });
 
 app.post("/html/:key/v/:seq/delete", requireLogin, formLimit, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
   if (!(await readForm(c))) return errorPage(c, "csrf");
-  const doc = await findDocument(c, c.req.param("key"));
-  const seq = parseSeq(c.req.param("seq"));
-  const version = doc && seq ? await findVersion(c.env.DB, doc.id, seq) : null;
-  if (!doc || !version) return errorPage(c, "notFound");
+  const found = await editableVersion(c);
+  if (found instanceof Response) return found;
   // deleteVersions refuses the current version, so a stale page cannot remove it.
-  const deleted = await deleteVersions(c.env.DB, [version.id]);
+  const deleted = await deleteVersions(c.env.DB, [found.version.id], [found.doc.projectId]);
   if (deleted === 0) return errorPage(c, "currentVersion");
-  return c.redirect(`/html/${doc.documentKey}?notice=version-deleted#versions`, 303);
+  return c.redirect(`/html/${found.doc.documentKey}?notice=version-deleted#versions`, 303);
 });
 
 // ---------------------------------------------------------------- storage
 
 app.get("/storage", requireLogin, async (c) => {
-  const [usage, versions] = await Promise.all([
+  const user = c.get("user")!;
+  const ids = user.projects.map((p) => p.projectId);
+  const [usage, versions, used] = await Promise.all([
     storageUsage(c.env.DB, storageLimits(c.env)),
-    listPreviousVersions(c.env.DB),
+    listPreviousVersions(c.env.DB, ids),
+    projectUsage(c.env.DB, ids),
   ]);
   const deleted = Number.parseInt(c.req.query("deleted") ?? "", 10);
   return c.html(
     <StoragePage
-      user={c.get("user")!}
+      user={user}
+      project={currentProject(c)}
       usage={usage}
+      byProject={user.projects.map((p) => ({ project: p, used: used.get(p.projectId) ?? 0 }))}
       versions={versions}
       deleted={Number.isSafeInteger(deleted) && deleted >= 0 ? deleted : null}
     />,
   );
 });
 
+// Only versions of projects this key edits; deleteVersions checks it in SQL.
 app.post("/storage/delete", requireLogin, formLimit, async (c) => {
-  if (!requireEditor(c)) return errorPage(c, "forbidden");
   const body = await readForm(c);
   if (!body) return errorPage(c, "csrf");
+  const editable = c.get("user")!.projects.filter((p) => p.role === "EDITOR").map((p) => p.projectId);
+  if (editable.length === 0) return errorPage(c, "forbidden");
   const raw = body["version_id"];
   const ids = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).map((v) => Number(v));
-  const deleted = await deleteVersions(c.env.DB, ids);
+  const deleted = await deleteVersions(c.env.DB, ids, editable);
   return c.redirect(`/storage?deleted=${deleted}`, 303);
 });
 

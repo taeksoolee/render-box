@@ -1,60 +1,14 @@
 // Access key management (design.md 3.1). Keys are generated locally; only the
-// SHA-256 hash reaches D1, through `wrangler d1 execute`.
+// SHA-256 hash reaches D1, through `wrangler d1 execute`. Roles belong to
+// project memberships (design.md 3.9; see `pnpm project`).
 //
-//   pnpm key create --name 홍길동 --role EDITOR [--remote]
+//   pnpm key create --name 홍길동 [--project tamna --role EDITOR] [--remote]
 //   pnpm key list [--remote]
 //   pnpm key revoke <prefix> [--remote]
-//   pnpm key set-role <prefix> EDITOR|VIEWER [--remote]
-import { execFileSync } from "node:child_process";
 import { createHash, randomInt } from "node:crypto";
-import { deployConfigArgs, readDeployConfig, wrangler, writeWranglerConfigs } from "./lib/remote";
+import { d1, fail, findKey, findProject, option, parseRole, positional, sqlString } from "./lib/d1-cli";
 
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const ROLES = ["EDITOR", "VIEWER"] as const;
-
-const args = process.argv.slice(2);
-const remote = args.includes("--remote");
-const positional = args.filter((a, i) => !a.startsWith("--") && !(args[i - 1] ?? "").startsWith("--name") && !(args[i - 1] ?? "").startsWith("--role"));
-const option = (name: string) => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 ? args[i + 1] : undefined;
-};
-
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
-
-const sqlString = (s: string) => `'${s.replace(/'/g, "''")}'`;
-
-// --remote uses the production settings from render-box.deploy.json.
-if (remote) writeWranglerConfigs(readDeployConfig());
-
-function d1(sql: string): Record<string, unknown>[] {
-  const command = ["d1", "execute", "DB", "--json", "--command", sql];
-  const out = remote
-    ? wrangler("admin", [...command, "--remote", ...deployConfigArgs], { capture: true })
-    : execFileSync("pnpm", ["exec", "wrangler", ...command, "--local", "--persist-to", "../../.wrangler/state"], {
-        cwd: new URL("../apps/admin/", import.meta.url),
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "inherit"],
-      });
-  const parsed = JSON.parse(out) as { results?: Record<string, unknown>[] }[];
-  return parsed.flatMap((r) => r.results ?? []);
-}
-
-function parseRole(value: string | undefined) {
-  const role = value?.toUpperCase();
-  if (!ROLES.includes(role as (typeof ROLES)[number])) fail("role must be EDITOR or VIEWER");
-  return role as (typeof ROLES)[number];
-}
-
-function requireKey(prefix: string | undefined) {
-  if (!prefix) fail("missing key prefix (see `pnpm key list`)");
-  const rows = d1(`SELECT id, name FROM access_keys WHERE key_prefix = ${sqlString(prefix)}`);
-  if (rows.length !== 1) fail(rows.length ? `prefix ${prefix} is ambiguous` : `no key with prefix ${prefix}`);
-  return rows[0] as { id: number; name: string };
-}
 
 const [command] = positional;
 const now = Date.now();
@@ -63,27 +17,41 @@ switch (command) {
   case "create": {
     const name = option("name")?.trim();
     if (!name || name.length > 100) fail("--name is required (max 100 chars)");
-    const role = parseRole(option("role"));
+    const projectSlug = option("project");
+    // Validate before issuing so a typo does not leave a key with no project.
+    const project = projectSlug ? findProject(projectSlug) : null;
+    const role = project ? parseRole(option("role")) : null;
+    if (!project && option("role")) fail("--role은 --project와 함께 씁니다. 예: --project tamna --role EDITOR");
+
     let key = "rb_";
     for (let i = 0; i < 32; i++) key += BASE62[randomInt(62)];
     const hash = createHash("sha256").update(key).digest("hex");
+    const membership = project
+      ? `INSERT INTO key_projects (key_id, project_id, role, created_at)
+         SELECT id, ${project.id}, '${role}', ${now} FROM access_keys WHERE key_hash = '${hash}';`
+      : "";
     d1(
-      `INSERT INTO access_keys (name, role, key_hash, key_prefix, created_at)
-       VALUES (${sqlString(name)}, '${role}', '${hash}', '${key.slice(0, 8)}', ${now})`,
+      `INSERT INTO access_keys (name, key_hash, key_prefix, created_at)
+       VALUES (${sqlString(name)}, '${hash}', '${key.slice(0, 8)}', ${now}); ${membership}`,
     );
-    console.log(`\n${name} (${role}) 키를 발급했습니다. 이 키는 다시 볼 수 없으니 지금 전달하세요.\n\n  ${key}\n`);
+    const where = project ? `${project.slug} ${role}` : "프로젝트 없음";
+    console.log(`\n${name} (${where}) 키를 발급했습니다. 이 키는 다시 볼 수 없으니 지금 전달하세요.\n\n  ${key}\n`);
+    if (!project) console.log(`프로젝트에 넣으려면: pnpm project grant ${key.slice(0, 8)} <slug> --role EDITOR|VIEWER\n`);
     break;
   }
   case "list": {
     const rows = d1(
-      "SELECT key_prefix, name, role, last_used_at, revoked_at FROM access_keys ORDER BY created_at",
+      `SELECT k.key_prefix, k.name, k.last_used_at, k.revoked_at,
+              (SELECT group_concat(p.slug || ':' || kp.role, ', ') FROM key_projects kp JOIN projects p ON p.id = kp.project_id
+                WHERE kp.key_id = k.id) AS projects
+       FROM access_keys k ORDER BY k.created_at`,
     );
     const date = (v: unknown) => (typeof v === "number" ? new Date(v).toISOString().slice(0, 16).replace("T", " ") : "-");
     console.table(
       rows.map((r) => ({
         prefix: r.key_prefix,
         name: r.name,
-        role: r.role,
+        projects: r.projects ?? "-",
         last_used: date(r.last_used_at),
         revoked: date(r.revoked_at),
       })),
@@ -91,18 +59,13 @@ switch (command) {
     break;
   }
   case "revoke": {
-    const key = requireKey(positional[1]);
+    const key = findKey(positional[1]);
     d1(`UPDATE access_keys SET revoked_at = ${now} WHERE id = ${key.id}; DELETE FROM sessions WHERE key_id = ${key.id};`);
     console.log(`${key.name} 키를 회수했고, 모든 세션을 종료했습니다.`);
     break;
   }
-  case "set-role": {
-    const key = requireKey(positional[1]);
-    const role = parseRole(positional[2]);
-    d1(`UPDATE access_keys SET role = '${role}' WHERE id = ${key.id}`);
-    console.log(`${key.name} 키의 역할을 ${role}(으)로 바꿨습니다.`);
-    break;
-  }
+  case "set-role":
+    fail("역할은 프로젝트마다 정합니다: pnpm project grant <prefix> <slug> --role EDITOR|VIEWER");
   default:
-    fail("usage: pnpm key <create|list|revoke|set-role> ... [--remote]");
+    fail("usage: pnpm key <create|list|revoke> ... [--remote]");
 }

@@ -8,6 +8,9 @@ export type DocumentRecord = {
   description: string | null;
   links: DocumentLink[];
   blobId: number;
+  projectId: number;
+  projectSlug: string;
+  projectName: string;
   htmlSize: number;
   version: number;
   createdByName: string;
@@ -18,6 +21,7 @@ export type DocumentRecord = {
 
 export type DocumentListRow = {
   documentKey: string;
+  projectSlug: string;
   title: string;
   description: string | null;
   linkCount: number;
@@ -31,9 +35,11 @@ export async function findDocument(d1: D1Database, documentKey: string): Promise
   const row = await d1
     .prepare(
       `SELECT d.id, d.document_key AS documentKey, d.title, d.description, d.links, d.blob_id AS blobId,
+              d.project_id AS projectId, p.slug AS projectSlug, p.name AS projectName,
               d.html_size AS htmlSize, d.version, d.created_at AS createdAt, d.updated_at AS updatedAt,
               ck.name AS createdByName, uk.name AS updatedByName
        FROM html_documents d
+       JOIN projects p ON p.id = d.project_id
        JOIN access_keys ck ON ck.id = d.created_by
        JOIN access_keys uk ON uk.id = d.updated_by
        WHERE d.document_key = ?`,
@@ -46,22 +52,25 @@ export async function findDocument(d1: D1Database, documentKey: string): Promise
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
-// Title substring or document key prefix, newest first (design.md 4.7).
+// Title substring or document key prefix, newest first (design.md 4.7), only
+// within the given projects (design.md 3.9).
 export async function listDocuments(
   d1: D1Database,
-  opts: { q: string; page: number; pageSize: number },
+  opts: { q: string; page: number; pageSize: number; projectIds: number[] },
 ): Promise<{ rows: DocumentListRow[]; total: number }> {
+  if (opts.projectIds.length === 0) return { rows: [], total: 0 };
   const like = `%${escapeLike(opts.q)}%`;
-  const where = `(? = '' OR d.title LIKE ? ESCAPE '\\' OR substr(d.document_key, 1, length(?)) = ?)`;
-  const binds = [opts.q, like, opts.q, opts.q];
+  const inProjects = `d.project_id IN (${opts.projectIds.map(() => "?").join(", ")})`;
+  const where = `${inProjects} AND (? = '' OR d.title LIKE ? ESCAPE '\\' OR substr(d.document_key, 1, length(?)) = ?)`;
+  const binds = [...opts.projectIds, opts.q, like, opts.q, opts.q];
   const [countRow, rows] = await Promise.all([
     d1.prepare(`SELECT COUNT(*) AS n FROM html_documents d WHERE ${where}`).bind(...binds).first<{ n: number }>(),
     d1
       .prepare(
-        `SELECT d.document_key AS documentKey, d.title, d.description,
+        `SELECT d.document_key AS documentKey, p.slug AS projectSlug, d.title, d.description,
                 json_array_length(d.links) AS linkCount, d.html_size AS htmlSize,
                 k.name AS updatedByName, d.updated_at AS updatedAt
-         FROM html_documents d JOIN access_keys k ON k.id = d.updated_by
+         FROM html_documents d JOIN access_keys k ON k.id = d.updated_by JOIN projects p ON p.id = d.project_id
          WHERE ${where}
          ORDER BY d.updated_at DESC LIMIT ? OFFSET ?`,
       )
@@ -78,6 +87,7 @@ export async function insertDocument(
     description: string;
     links: DocumentLink[];
     blob: { id: number; size: number };
+    projectId: number;
     keyId: number;
     now?: number;
   },
@@ -89,11 +99,11 @@ export async function insertDocument(
       d1
         .prepare(
           `INSERT INTO html_documents
-             (document_key, title, description, links, blob_id, html_size, version, created_by, updated_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+             (document_key, title, description, links, blob_id, project_id, html_size, version, created_by, updated_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
         )
         .bind(documentKey, input.title, input.description || null, JSON.stringify(input.links), input.blob.id,
-          input.blob.size, input.keyId, input.keyId, now, now),
+          input.projectId, input.blob.size, input.keyId, input.keyId, now, now),
       d1
         .prepare(
           `INSERT INTO html_document_versions (document_id, seq, blob_id, html_size, created_by, created_at)

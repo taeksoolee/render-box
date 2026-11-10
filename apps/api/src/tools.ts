@@ -1,4 +1,4 @@
-import type { ActiveKey } from "@render-box/auth";
+import { editsAny, type ActiveKey } from "@render-box/auth";
 import { z } from "zod";
 import { createHtml, getHtml, listHtml, requireEditor, ServiceError, updateHtml, type Ctx, type HtmlInput } from "./service";
 
@@ -18,10 +18,16 @@ const link = z.object({
   url: z.string().optional().describe("http:// 또는 https:// 주소. 비우면 이 링크는 저장되지 않음"),
 });
 
+const project = z
+  .string()
+  .optional()
+  .describe("프로젝트 slug (예: tamna). 편집할 수 있는 프로젝트가 하나면 빼도 된다. 모르면 list_html 결과의 project를 본다");
+
 const documentKey = z.string().describe("문서 키 (22자). upload_html이나 list_html 결과의 document_key");
 
 const schemas = {
   upload_html: z.object({
+    project,
     title: z.string().describe("문서 제목 (최대 200자)"),
     html: z
       .string()
@@ -39,6 +45,7 @@ const schemas = {
     links: z.array(link).optional().describe("바꿀 링크 목록 전체. 빼면 그대로, 빈 배열이면 모두 지움"),
   }),
   list_html: z.object({
+    project: z.string().optional().describe("이 프로젝트 slug의 문서만. 빼면 속한 모든 프로젝트"),
     query: z.string().optional().describe("제목 일부 또는 문서 키 앞부분"),
     page: z.number().int().min(1).optional().describe("페이지 (1부터, 한 페이지 20개)"),
   }),
@@ -87,10 +94,11 @@ function inputSchema(schema: z.ZodType) {
   return json;
 }
 
-// Tools this key may call; VIEWER keys only see the read-only ones.
+// Tools this key may call; keys that edit no project only see the read-only
+// ones. Each write still checks the document's project (design.md 3.9).
 export function listTools(key: ActiveKey) {
   return (Object.keys(schemas) as ToolName[])
-    .filter((name) => key.role === "EDITOR" || !toolMeta[name].editorOnly)
+    .filter((name) => editsAny(key.projects) || !toolMeta[name].editorOnly)
     .map((name) => ({
       name,
       title: toolMeta[name].title,

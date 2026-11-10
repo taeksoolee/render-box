@@ -1,4 +1,4 @@
-import type { SessionUser } from "@render-box/auth";
+import type { Membership, SessionUser } from "@render-box/auth";
 import type { DocumentLink } from "@render-box/db";
 import type { VersionRow } from "@render-box/documents";
 import { formatFullDate, formatRelativeDate, formatSize, isoDate, linkDisplayName } from "../lib/format";
@@ -62,6 +62,7 @@ export function DetailPage({
   doc,
   versions,
   user,
+  project,
   renderOrigin,
   saved,
   replaced,
@@ -70,18 +71,20 @@ export function DetailPage({
   doc: DetailDoc;
   versions: VersionRow[];
   user: SessionUser;
+  // The document's project, as the viewer belongs to it (design.md 3.9).
+  project: Membership;
   renderOrigin: string;
   saved: boolean;
   replaced: boolean;
   notice: DetailNotice | null;
 }) {
   const url = `${renderOrigin}/${doc.documentKey}`;
-  const editor = user.role === "EDITOR";
+  const editor = project.role === "EDITOR";
   return (
-    <AppPage title={doc.title} user={user}>
+    <AppPage title={doc.title} user={user} project={project}>
       <div class="space-y-8">
         <div class="space-y-4">
-          <BackLink href="/html">목록</BackLink>
+          <BackLink href={`/html?project=${encodeURIComponent(project.slug)}`}>{project.name} 목록</BackLink>
           {notice ? (
             <Alert kind={NOTICES[notice].kind} title={NOTICES[notice].title}>
               {NOTICES[notice].body ? <p>{NOTICES[notice].body}</p> : null}
@@ -205,7 +208,7 @@ export function DetailPage({
           </div>
         </section>
 
-        <Versions doc={doc} versions={versions} user={user} renderOrigin={renderOrigin} />
+        <Versions doc={doc} versions={versions} user={user} editor={editor} renderOrigin={renderOrigin} />
 
         {editor ? (
           <section class="flex gap-2 border-t border-line pt-6 sm:hidden">
@@ -242,14 +245,15 @@ function Versions({
   doc,
   versions,
   user,
+  editor,
   renderOrigin,
 }: {
   doc: DetailDoc;
   versions: VersionRow[];
   user: SessionUser;
+  editor: boolean;
   renderOrigin: string;
 }) {
-  const editor = user.role === "EDITOR";
   const base = `/html/${doc.documentKey}/v`;
   return (
     <section id="versions">

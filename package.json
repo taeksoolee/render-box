@@ -16,6 +16,7 @@
     "deploy:prod": "tsx scripts/deploy.ts deploy",
     "check:headers": "tsx scripts/check-headers.ts",
     "key": "tsx scripts/key.ts",
+    "project": "tsx scripts/project.ts",
     "setup:local": "tsx scripts/setup-local.ts && pnpm db:migrate:local",
     "setup:remote": "tsx scripts/setup-remote.ts",
     "test:e2e": "playwright test",

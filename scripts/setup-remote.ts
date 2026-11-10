@@ -128,5 +128,7 @@ run("pnpm", ["-s", "check:headers"]);
 console.log(`
 ✓ 준비가 끝났습니다. 첫 편집자 키를 만들고 ${config.origins.app} 에서 로그인하세요:
 
-  pnpm key create --remote --name <이름> --role EDITOR
+  pnpm key create --remote --name <이름> --project default --role EDITOR
+
+프로젝트를 더 만들려면: pnpm project create <slug> --name <이름> --remote
 `);

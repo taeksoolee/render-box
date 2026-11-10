@@ -1,4 +1,4 @@
-import type { SessionUser } from "@render-box/auth";
+import type { Membership, SessionUser } from "@render-box/auth";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { Icon, type IconName } from "./icon";
@@ -43,7 +43,38 @@ export function Document({ title, children }: { title: string; children: Child }
   );
 }
 
-export function TopBar({ user }: { user: SessionUser }) {
+// Current project and the role in it; a <details> menu switches projects
+// without JS when the key is in more than one (design.md 3.9).
+function ProjectMenu({ user, project }: { user: SessionUser; project: Membership }) {
+  const others = user.projects.filter((p) => p.projectId !== project.projectId);
+  const label = (
+    <>
+      <span class="max-w-40 truncate font-medium text-fg">{project.name}</span>
+      <span class={project.role === "EDITOR" ? ui.badgePrimary : ui.badgeNeutral}>{ROLE_LABEL[project.role]}</span>
+    </>
+  );
+  if (others.length === 0) return <span class="flex items-center gap-2 text-sm" data-project={project.slug}>{label}</span>;
+  return (
+    <details class="relative" data-project={project.slug}>
+      <summary class={`${ui.ghost} cursor-pointer list-none gap-2`} aria-label={`프로젝트 ${project.name}, 바꾸기`}>
+        {label}
+        <Icon name="chevron-down" class="size-3.5" />
+      </summary>
+      <ul class="absolute right-0 z-20 mt-1 min-w-48 rounded-md border border-line bg-surface py-1 shadow-sm">
+        {others.map((p) => (
+          <li>
+            <a href={`/html?project=${encodeURIComponent(p.slug)}`} class="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-canvas">
+              <span class="truncate">{p.name}</span>
+              <span class="text-xs text-fg-subtle">{ROLE_LABEL[p.role]}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+export function TopBar({ user, project = null }: { user: SessionUser; project?: Membership | null }) {
   return (
     <header class="sticky top-0 z-10 h-14 border-b border-line bg-surface">
       <div class="mx-auto flex h-full max-w-5xl items-center justify-between px-4 sm:px-6">
@@ -52,8 +83,8 @@ export function TopBar({ user }: { user: SessionUser }) {
           render-box
         </a>
         <div class="flex items-center gap-2">
+          {project ? <ProjectMenu user={user} project={project} /> : null}
           <span class="hidden text-sm text-fg-muted sm:inline">{user.name}</span>
-          <span class={user.role === "EDITOR" ? ui.badgePrimary : ui.badgeNeutral}>{ROLE_LABEL[user.role]}</span>
           <HelpLink class={ui.ghost} />
           <form method="post" action="/logout">
             <input type="hidden" name="_csrf" value={user.csrfToken ?? ""} />
@@ -70,17 +101,19 @@ export function TopBar({ user }: { user: SessionUser }) {
 export function AppPage({
   title,
   user,
+  project = null,
   width = "max-w-3xl",
   children,
 }: {
   title: string;
   user: SessionUser;
+  project?: Membership | null;
   width?: "max-w-3xl" | "max-w-5xl";
   children: Child;
 }) {
   return (
     <Document title={title}>
-      <TopBar user={user} />
+      <TopBar user={user} project={project} />
       <main id="main" class={`mx-auto ${width} px-4 py-6 sm:px-6 sm:py-8`}>
         {children}
       </main>

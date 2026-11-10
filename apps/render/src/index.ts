@@ -1,4 +1,4 @@
-import { createSession, loadSession, sessionCookieName, sessionCookieOptions, verifyHandoff } from "@render-box/auth";
+import { canRead, createSession, loadSession, sessionCookieName, sessionCookieOptions, verifyHandoff } from "@render-box/auth";
 import { blobStream, createDb, htmlDocuments, htmlDocumentVersions } from "@render-box/db";
 import { canonicalOrigin, fetchMetadataGuard, isDocumentKey, safeRedirectPath } from "@render-box/shared";
 import { and, eq } from "drizzle-orm";
@@ -52,30 +52,31 @@ async function render(c: Context<{ Bindings: Env }>, seq: number | null) {
   if (!isDocumentKey(documentKey)) return c.text(NOT_FOUND, 404);
 
   const db = createDb(env.DB);
-  const user = await loadSession(db, getCookie(c, sessionCookieName("RENDER", isDev(env))), "RENDER");
+  const user = await loadSession(db, env.DB, getCookie(c, sessionCookieName("RENDER", isDev(env))), "RENDER");
   if (!user) {
     const next = encodeURIComponent(seq === null ? `/${documentKey}` : `/${documentKey}/v/${seq}`);
     return c.redirect(`${env.APP_ORIGIN}/auth/render?next=${next}`, 302);
   }
 
-  let blobId: number | undefined;
+  let found: { blobId: number; projectId: number } | undefined;
   if (seq === null) {
-    const doc = await db
-      .select({ blobId: htmlDocuments.blobId })
+    found = await db
+      .select({ blobId: htmlDocuments.blobId, projectId: htmlDocuments.projectId })
       .from(htmlDocuments)
       .where(eq(htmlDocuments.documentKey, documentKey))
       .get();
-    blobId = doc?.blobId;
   } else {
-    const version = await db
-      .select({ blobId: htmlDocumentVersions.blobId })
+    found = await db
+      .select({ blobId: htmlDocumentVersions.blobId, projectId: htmlDocuments.projectId })
       .from(htmlDocumentVersions)
       .innerJoin(htmlDocuments, eq(htmlDocuments.id, htmlDocumentVersions.documentId))
       .where(and(eq(htmlDocuments.documentKey, documentKey), eq(htmlDocumentVersions.seq, seq)))
       .get();
-    blobId = version?.blobId;
   }
-  if (blobId === undefined) return c.text(NOT_FOUND, 404);
+  // Knowing the URL is not enough: the key must be in the document's project.
+  // Other projects' documents get the same 404 as missing ones (design.md 3.9).
+  if (!found || !canRead(user.projects, found.projectId)) return c.text(NOT_FOUND, 404);
+  const { blobId } = found;
 
   return new Response(blobStream(env.DB, blobId, injectStorageShim), {
     headers: { "Content-Type": "text/html; charset=utf-8" },

@@ -68,7 +68,7 @@ rest.onError((err, c) => {
 
 rest.get("/html", async (c) => {
   const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
-  return c.json(await listHtml(ctx(c), { query: c.req.query("q"), page }));
+  return c.json(await listHtml(ctx(c), { query: c.req.query("q"), page, project: c.req.query("project") }));
 });
 
 rest.post("/html", async (c) => {
@@ -78,7 +78,12 @@ rest.post("/html", async (c) => {
   }
   const doc = await createHtml(
     ctx(c),
-    { title, description: c.req.query("description"), links: c.req.queries("link")?.map(parseLink) },
+    {
+      title,
+      description: c.req.query("description"),
+      links: c.req.queries("link")?.map(parseLink),
+      project: c.req.query("project"),
+    },
     htmlBody(c),
   );
   return c.json(doc, 201, { Location: `/api/v1/html/${doc.document_key}`, ETag: etag(doc.version) });

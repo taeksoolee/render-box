@@ -12,13 +12,38 @@ const bytes = customType<{ data: Uint8Array; driverData: ArrayBuffer }>({
 export const accessKeys = sqliteTable("access_keys", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
-  role: text("role", { enum: ["EDITOR", "VIEWER"] }).notNull(),
   keyHash: text("key_hash").notNull().unique(),
   keyPrefix: text("key_prefix").notNull(),
   revokedAt: integer("revoked_at"),
   lastUsedAt: integer("last_used_at"),
   createdAt: integer("created_at").notNull(),
 });
+
+export type Role = "EDITOR" | "VIEWER";
+
+// A document belongs to one project; a key has a role per project
+// (design.md 3.9, 6.7).
+export const projects = sqliteTable("projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const keyProjects = sqliteTable(
+  "key_projects",
+  {
+    keyId: integer("key_id")
+      .notNull()
+      .references(() => accessKeys.id),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id),
+    role: text("role", { enum: ["EDITOR", "VIEWER"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.keyId, t.projectId] }), index("key_projects_project_id_idx").on(t.projectId)],
+);
 
 export const sessions = sqliteTable(
   "sessions",
@@ -79,6 +104,9 @@ export const htmlDocuments = sqliteTable(
     blobId: integer("blob_id")
       .notNull()
       .references(() => htmlBlobs.id),
+    // No foreign key: SQLite cannot ALTER TABLE ADD a NOT NULL column with
+    // one, so the code keeps it pointing at projects.id (design.md 6.7).
+    projectId: integer("project_id").notNull().default(0),
     htmlSize: integer("html_size").notNull(),
     version: integer("version").notNull().default(1),
     createdBy: integer("created_by")
@@ -90,7 +118,11 @@ export const htmlDocuments = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (t) => [index("html_documents_updated_at_idx").on(t.updatedAt), index("html_documents_blob_id_idx").on(t.blobId)],
+  (t) => [
+    index("html_documents_updated_at_idx").on(t.updatedAt),
+    index("html_documents_blob_id_idx").on(t.blobId),
+    index("html_documents_project_id_idx").on(t.projectId),
+  ],
 );
 
 // Every HTML a document has had, including the current one (the highest seq).

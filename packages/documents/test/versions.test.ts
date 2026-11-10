@@ -7,8 +7,10 @@ import {
   findAttachableBlob,
   findDocument,
   insertDocument,
+  listDocuments,
   listPreviousVersions,
   listVersions,
+  projectUsage,
   storageUsage,
   storeUpload,
   updateDocument,
@@ -24,14 +26,19 @@ const HOUR = 60 * 60 * 1000;
 
 let d1: TestD1;
 let keyId: number;
+let projectId: number;
+
+const newProject = (slug: string) =>
+  Number(d1.sqlite.prepare("INSERT INTO projects (slug, name, created_at) VALUES (?, ?, 0) RETURNING id").get(slug, slug)!.id);
 
 beforeEach(() => {
   d1 = createTestD1();
   keyId = Number(
     d1.sqlite
-      .prepare("INSERT INTO access_keys (name, role, key_hash, key_prefix, created_at) VALUES ('t', 'EDITOR', 'h', 'rb_t', 0) RETURNING id")
+      .prepare("INSERT INTO access_keys (name, key_hash, key_prefix, created_at) VALUES ('t', 'h', 'rb_t', 0) RETURNING id")
       .get()!.id,
   );
+  projectId = newProject("main");
 });
 
 const store = (text: string, opts: { declared?: boolean; now?: number } = {}) =>
@@ -43,9 +50,9 @@ const store = (text: string, opts: { declared?: boolean; now?: number } = {}) =>
 
 const text = async (blobId: number) => new Response(blobStream(d1, blobId)).text();
 
-async function newDocument(html: string) {
+async function newDocument(html: string, project = projectId) {
   const blob = await store(html);
-  const key = await insertDocument(d1, { title: "doc", description: "", links: [], blob, keyId });
+  const key = await insertDocument(d1, { title: "doc", description: "", links: [], blob, projectId: project, keyId });
   return (await findDocument(d1, key))!;
 }
 
@@ -144,7 +151,7 @@ describe("versions", () => {
     const doc = await newDocument("<p>v1</p>");
     await replace(doc.documentKey, "<p>v2</p>");
     const v1 = (await listVersions(d1, doc.id))[1]!;
-    expect(await deleteVersions(d1, [v1.id])).toBe(1);
+    expect(await deleteVersions(d1, [v1.id], [projectId])).toBe(1);
     await replace(doc.documentKey, "<p>v3</p>");
     expect((await listVersions(d1, doc.id)).map((v) => v.seq)).toEqual([3, 2]);
   });
@@ -154,7 +161,7 @@ describe("deleting versions", () => {
   it("never deletes the current version", async () => {
     const doc = await newDocument("<p>v1</p>");
     const [current] = await listVersions(d1, doc.id);
-    expect(await deleteVersions(d1, [current!.id])).toBe(0);
+    expect(await deleteVersions(d1, [current!.id], [projectId])).toBe(0);
     expect(await text((await findDocument(d1, doc.documentKey))!.blobId)).toBe("<p>v1</p>");
   });
 
@@ -166,18 +173,18 @@ describe("deleting versions", () => {
     await updateDocument(d1, { ...fields(current), blob: { id: v1.blobId, size: v1.htmlSize }, restoredFrom: 1, keyId });
 
     // v1 shares its blob with the current v3: deleting it frees nothing.
-    const previous = await listPreviousVersions(d1);
+    const previous = await listPreviousVersions(d1, [projectId]);
     expect(previous.map((p) => [p.seq, p.freesBytes])).toEqual([
       [2, 9],
       [1, 0],
     ]);
-    expect(await deleteVersions(d1, [v1.id])).toBe(1);
+    expect(await deleteVersions(d1, [v1.id], [projectId])).toBe(1);
     expect(await text((await findDocument(d1, doc.documentKey))!.blobId)).toBe("<p>v1</p>");
 
     // v2's blob is used by nothing else: its blob and chunks go.
     const v2 = (await listVersions(d1, doc.id)).find((v) => v.seq === 2)!;
     const blobs = count(d1, "html_blobs");
-    expect(await deleteVersions(d1, [v2.id])).toBe(1);
+    expect(await deleteVersions(d1, [v2.id], [projectId])).toBe(1);
     expect(count(d1, "html_blobs")).toBe(blobs - 1);
     expect(d1.sqlite.prepare("SELECT COUNT(*) AS n FROM html_chunks WHERE blob_id = ?").get(v2.blobId)).toEqual({ n: 0 });
   });
@@ -192,14 +199,14 @@ describe("deleting versions", () => {
     await updateDocument(d1, { ...fields(current), blob: { id: v1.blobId, size: v1.htmlSize }, restoredFrom: 1, keyId });
     await replace(doc.documentKey, "<p>v4</p>");
 
-    expect(await deleteVersions(d1, [v1.id])).toBe(1);
+    expect(await deleteVersions(d1, [v1.id], [projectId])).toBe(1);
     const v3 = (await listVersions(d1, doc.id)).find((v) => v.seq === 3)!;
     expect(v3.blobId).toBe(v1.blobId);
     expect(await text(v3.blobId)).toBe("<p>v1</p>");
   });
 
   it("ignores ids that are not numbers or do not exist", async () => {
-    expect(await deleteVersions(d1, [Number.NaN, -1, 999])).toBe(0);
+    expect(await deleteVersions(d1, [Number.NaN, -1, 999], [projectId])).toBe(0);
   });
 });
 
@@ -225,6 +232,65 @@ describe("uploads and versions", () => {
     expect(count(d1, "html_document_versions")).toBe(0);
     expect(count(d1, "html_blobs")).toBe(0);
     expect(count(d1, "html_chunks")).toBe(0);
+  });
+});
+
+describe("projects", () => {
+  it("lists only the given projects' documents", async () => {
+    const other = newProject("other");
+    const mine = await newDocument("<p>mine</p>");
+    await newDocument("<p>theirs</p>", other);
+    const list = (ids: number[]) => listDocuments(d1, { q: "", page: 1, pageSize: 20, projectIds: ids });
+    expect((await list([projectId])).rows.map((r) => [r.documentKey, r.projectSlug])).toEqual([[mine.documentKey, "main"]]);
+    expect((await list([projectId, other])).total).toBe(2);
+    expect(await list([])).toEqual({ rows: [], total: 0 });
+  });
+
+  it("never deletes or lists versions of a project the caller does not edit", async () => {
+    const other = newProject("other");
+    const theirs = await newDocument("<p>t1</p>", other);
+    await replace(theirs.documentKey, "<p>t2</p>");
+    const old = (await listVersions(d1, theirs.id))[1]!;
+    // A forged form naming another project's version id deletes nothing.
+    expect(await deleteVersions(d1, [old.id], [projectId])).toBe(0);
+    expect(await listPreviousVersions(d1, [projectId])).toEqual([]);
+    expect((await listPreviousVersions(d1, [other])).map((v) => v.id)).toEqual([old.id]);
+    expect(await deleteVersions(d1, [old.id], [other])).toBe(1);
+  });
+
+  it("counts usage per project, each blob once", async () => {
+    const other = newProject("other");
+    const doc = await newDocument("<p>v1</p>");
+    await replace(doc.documentKey, "<p>v2!</p>");
+    await newDocument("<p>xx</p>", other);
+    const usage = await projectUsage(d1, [projectId, other, 999]);
+    expect([...usage]).toEqual([
+      [projectId, 9 + 10],
+      [other, 9],
+      [999, 0],
+    ]);
+  });
+});
+
+describe("migration 0002", () => {
+  it("moves documents and keys, with their roles, into a default project", () => {
+    const old = createTestD1({ migrations: ["0000_init.sql", "0001_versions.sql"] });
+    old.sqlite.exec(`
+      INSERT INTO access_keys (id, name, role, key_hash, key_prefix, created_at) VALUES
+        (1, 'e', 'EDITOR', 'h1', 'rb_e', 0), (2, 'v', 'VIEWER', 'h2', 'rb_v', 0);
+      INSERT INTO html_blobs (id, size, created_by, created_at) VALUES (7, 3, 1, 0);
+      INSERT INTO html_documents (document_key, title, links, blob_id, html_size, created_by, updated_by, created_at, updated_at)
+        VALUES ('k', 't', '[]', 7, 3, 1, 1, 0, 0);
+    `);
+    applyMigration(old.sqlite, "0002_projects.sql");
+    const q = (sql: string) => old.sqlite.prepare(sql).all();
+    expect(q("SELECT slug, name FROM projects")).toEqual([{ slug: "default", name: "기본" }]);
+    expect(q("SELECT key_id, role FROM key_projects ORDER BY key_id")).toEqual([
+      { key_id: 1, role: "EDITOR" },
+      { key_id: 2, role: "VIEWER" },
+    ]);
+    expect(q("SELECT project_id FROM html_documents")).toEqual([{ project_id: 1 }]);
+    expect(q("PRAGMA table_info(access_keys)").map((c) => (c as { name: string }).name)).not.toContain("role");
   });
 });
 

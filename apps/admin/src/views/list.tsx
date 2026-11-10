@@ -1,4 +1,4 @@
-import type { SessionUser } from "@render-box/auth";
+import type { Membership, SessionUser } from "@render-box/auth";
 import type { StorageUsage } from "@render-box/documents";
 import { formatFullDate, formatRelativeDate, formatSize, isoDate } from "../lib/format";
 import { Alert, AppPage, SafetyLine } from "./layout";
@@ -24,6 +24,8 @@ export type ListData = {
   pageSize: number;
   q: string;
   renderOrigin: string;
+  // The project being listed; null when the key belongs to none (design.md 3.9).
+  project: Membership | null;
 };
 
 function pageHref(q: string, page: number) {
@@ -57,7 +59,16 @@ function NewWindowLink({ row, origin, compact = false }: { row: ListRow; origin:
   );
 }
 
-function Empty({ data, user }: { data: ListData; user: SessionUser }) {
+function Empty({ data }: { data: ListData }) {
+  if (!data.project) {
+    return (
+      <div class={ui.empty}>
+        <Icon name="file-code" class="mx-auto size-8 text-fg-subtle" />
+        <p class="mt-3 text-base font-semibold">속한 프로젝트가 없습니다</p>
+        <p class="mt-1 text-fg-muted break-keep">문서를 보려면 운영자에게 프로젝트에 넣어 달라고 요청하세요.</p>
+      </div>
+    );
+  }
   if (data.q) {
     return (
       <div class={ui.empty}>
@@ -70,7 +81,7 @@ function Empty({ data, user }: { data: ListData; user: SessionUser }) {
       </div>
     );
   }
-  return user.role === "EDITOR" ? (
+  return data.project.role === "EDITOR" ? (
     <div class={ui.empty}>
       <Icon name="upload" class="mx-auto size-8 text-fg-subtle" />
       <p class="mt-3 text-base font-semibold">아직 등록한 HTML이 없습니다</p>
@@ -133,7 +144,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
   return (
     <div id="list" class="mt-4">
       {data.rows.length === 0 ? (
-        <Empty data={data} user={user} />
+        <Empty data={data} />
       ) : (
         <>
           <div class={`${ui.tableWrap} hidden md:block`}>
@@ -217,15 +228,15 @@ export function ListPage({
   deleted: boolean;
 }) {
   return (
-    <AppPage title="문서" user={user} width="max-w-5xl">
+    <AppPage title="문서" user={user} project={data.project} width="max-w-5xl">
       <div class="space-y-4">
         <SafetyLine />
         {deleted ? <Alert kind="success" title="문서를 삭제했습니다." /> : null}
         <StorageSummary usage={storage} />
         <div class="flex items-center justify-between gap-2">
-          <h1 class="text-xl font-semibold">문서</h1>
-          {user.role === "EDITOR" ? (
-            <a href="/html/new" class={ui.primary}>
+          <h1 class="text-xl font-semibold">{data.project ? data.project.name : "문서"}</h1>
+          {data.project?.role === "EDITOR" ? (
+            <a href={`/html/new?project=${encodeURIComponent(data.project!.slug)}`} class={ui.primary}>
               <Icon name="plus" />새 HTML 등록
             </a>
           ) : null}

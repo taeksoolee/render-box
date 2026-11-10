@@ -1,4 +1,4 @@
-import type { ActiveKey } from "@render-box/auth";
+import { canEdit, editsAny, type ActiveKey, type Membership } from "@render-box/auth";
 import { blobStream, deleteBlobStatements, MAX_HTML_BYTES } from "@render-box/db";
 import {
   deleteOrphanBlobs,
@@ -42,11 +42,28 @@ export type LinkInput = { label?: string; url?: string };
 export type FieldsInput = { title?: string; description?: string; links?: LinkInput[] };
 
 const NOT_FOUND = "문서를 찾을 수 없습니다. 목록에서 문서 키를 확인해 주세요.";
+const FORBIDDEN = "이 프로젝트의 편집 권한(EDITOR)이 있는 키만 문서를 올리거나 고칠 수 있습니다.";
 
+// Editor in at least one project; the document's own project is checked on
+// each write (design.md 3.9).
 export function requireEditor(ctx: Ctx) {
-  if (ctx.key.role !== "EDITOR") {
-    throw new ServiceError(403, "forbidden", "편집 권한(EDITOR)이 있는 키만 문서를 올리거나 고칠 수 있습니다.");
+  if (!editsAny(ctx.key.projects)) throw new ServiceError(403, "forbidden", FORBIDDEN);
+}
+
+const slugList = (ps: Membership[]) => ps.map((p) => p.slug).join(", ") || "없음";
+
+// The project a new document goes into: the one named, or the only project
+// this key edits.
+function targetProject(ctx: Ctx, slug: string | undefined): Membership {
+  const editable = ctx.key.projects.filter((p) => p.role === "EDITOR");
+  if (slug === undefined || slug === "") {
+    if (editable.length === 1) return editable[0]!;
+    throw new ServiceError(400, "project_required", `올릴 프로젝트를 project로 지정해 주세요. 편집할 수 있는 프로젝트: ${slugList(editable)}`);
   }
+  const project = ctx.key.projects.find((p) => p.slug === slug);
+  if (!project) throw new ServiceError(404, "project_not_found", `속하지 않았거나 없는 프로젝트입니다: ${slug}. 속한 프로젝트: ${slugList(ctx.key.projects)}`);
+  if (project.role !== "EDITOR") throw new ServiceError(403, "forbidden", FORBIDDEN);
+  return project;
 }
 
 const urls = (env: Env, key: string) => ({
@@ -92,9 +109,12 @@ async function storeHtml(ctx: Ctx, body: ReadableStream<Uint8Array>, declaredSiz
   }
 }
 
+// Documents of projects this key is not in look exactly like missing ones.
 async function loadDocument(ctx: Ctx, documentKey: string): Promise<DocumentRecord> {
   const doc = await findDocument(ctx.env.DB, documentKey);
-  if (!doc) throw new ServiceError(404, "not_found", NOT_FOUND);
+  if (!doc || !ctx.key.projects.some((p) => p.projectId === doc.projectId)) {
+    throw new ServiceError(404, "not_found", NOT_FOUND);
+  }
   return doc;
 }
 
@@ -102,16 +122,17 @@ export type HtmlInput = { body: ReadableStream<Uint8Array>; size?: number };
 
 export async function createHtml(
   ctx: Ctx,
-  input: { title: string; description?: string; links?: LinkInput[] },
+  input: { title: string; description?: string; links?: LinkInput[]; project?: string },
   html: HtmlInput,
 ) {
   requireEditor(ctx);
+  const project = targetProject(ctx, input.project);
   const title = input.title.trim();
   const description = normalizeDescription(input.description ?? "");
   const links = checkFields({ title, description, links: toLinkRows(input.links ?? []) });
   const blob = await storeHtml(ctx, html.body, html.size);
-  const key = await insertDocument(ctx.env.DB, { title, description, links, blob, keyId: ctx.key.id });
-  return { document_key: key, title, ...urls(ctx.env, key), html_size: blob.size, version: 1 };
+  const key = await insertDocument(ctx.env.DB, { title, description, links, blob, projectId: project.projectId, keyId: ctx.key.id });
+  return { document_key: key, project: project.slug, title, ...urls(ctx.env, key), html_size: blob.size, version: 1 };
 }
 
 // Fields left undefined keep their current value. `expectedVersion` comes from
@@ -125,6 +146,7 @@ export async function updateHtml(
 ) {
   requireEditor(ctx);
   const doc = await loadDocument(ctx, documentKey);
+  if (!canEdit(ctx.key.projects, doc.projectId)) throw new ServiceError(403, "forbidden", FORBIDDEN);
   if (expectedVersion !== undefined && expectedVersion !== doc.version) {
     throw new ServiceError(412, "version_mismatch", conflictMessage(doc.version));
   }
@@ -152,6 +174,7 @@ export async function updateHtml(
   // The previous HTML stays as a version (design.md 4.9).
   return {
     document_key: doc.documentKey,
+    project: doc.projectSlug,
     title: fields.title,
     ...urls(ctx.env, doc.documentKey),
     html_size: blob?.size ?? doc.htmlSize,
@@ -163,12 +186,21 @@ export async function updateHtml(
 const conflictMessage = (current: number) =>
   `문서가 그 사이 수정되었습니다 (현재 버전 ${current}). 최신 내용을 확인한 뒤 다시 시도해 주세요.`;
 
-export async function listHtml(ctx: Ctx, input: { query?: string; page?: number }) {
+// All projects this key is in, or just the one named.
+export async function listHtml(ctx: Ctx, input: { query?: string; page?: number; project?: string }) {
   const page = input.page ?? 1;
+  let projects = ctx.key.projects;
+  if (input.project) {
+    projects = projects.filter((p) => p.slug === input.project);
+    if (projects.length === 0) {
+      throw new ServiceError(404, "project_not_found", `속하지 않았거나 없는 프로젝트입니다: ${input.project}. 속한 프로젝트: ${slugList(ctx.key.projects)}`);
+    }
+  }
   const { rows, total } = await listDocuments(ctx.env.DB, {
     q: (input.query ?? "").trim().slice(0, 200),
     page,
     pageSize: PAGE_SIZE,
+    projectIds: projects.map((p) => p.projectId),
   });
   return {
     total,
@@ -176,6 +208,7 @@ export async function listHtml(ctx: Ctx, input: { query?: string; page?: number 
     page_count: Math.max(1, Math.ceil(total / PAGE_SIZE)),
     documents: rows.map((r) => ({
       document_key: r.documentKey,
+      project: r.projectSlug,
       title: r.title,
       render_url: `${ctx.env.RENDER_ORIGIN}/${r.documentKey}`,
       html_size: r.htmlSize,
@@ -190,6 +223,7 @@ export async function getHtml(ctx: Ctx, documentKey: string) {
   return {
     info: {
       document_key: doc.documentKey,
+      project: doc.projectSlug,
       title: doc.title,
       description: doc.description ?? "",
       links: doc.links,

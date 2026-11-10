@@ -6,7 +6,7 @@ import { isDev, type AppEnv } from "../env";
 
 export const loadUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   const token = getCookie(c, sessionCookieName("APP", isDev(c.env)));
-  c.set("user", await loadSession(createDb(c.env.DB), token, "APP"));
+  c.set("user", await loadSession(createDb(c.env.DB), c.env.DB, token, "APP"));
   await next();
 };
 

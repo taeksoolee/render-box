@@ -45,4 +45,24 @@ export async function storageUsage(d1: D1Database, limits: StorageLimits): Promi
   return { ...limits, used: row?.used ?? 0, previous: row?.previous ?? 0 };
 }
 
+// Bytes each project's documents and versions point at, each blob counted
+// once per project (design.md 3.9).
+export async function projectUsage(d1: D1Database, projectIds: number[]): Promise<Map<number, number>> {
+  const usage = new Map(projectIds.map((id) => [id, 0]));
+  if (projectIds.length === 0) return usage;
+  const { results } = await d1
+    .prepare(
+      `SELECT u.project_id AS projectId, COALESCE(SUM(b.size), 0) AS used FROM (
+         SELECT d.project_id, d.blob_id FROM html_documents d
+         UNION SELECT d.project_id, v.blob_id FROM html_document_versions v JOIN html_documents d ON d.id = v.document_id
+       ) u JOIN html_blobs b ON b.id = u.blob_id
+       WHERE u.project_id IN (${projectIds.map(() => "?").join(", ")})
+       GROUP BY u.project_id`,
+    )
+    .bind(...projectIds)
+    .all<{ projectId: number; used: number }>();
+  for (const r of results) usage.set(r.projectId, r.used);
+  return usage;
+}
+
 export const STORAGE_FULL_MESSAGE = "저장 공간이 부족합니다. 이전 버전이나 안 쓰는 문서를 지워 주세요.";

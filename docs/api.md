@@ -9,8 +9,11 @@
 
 두 방법 모두 **웹 로그인에 쓰는 개인 접근 키**를 그대로 씁니다. 따로 발급받을 것은 없습니다.
 
-- **편집자(EDITOR) 키:** 올리기, 고치기, 조회
-- **열람자(VIEWER) 키:** 조회만
+- 문서는 프로젝트(예: `tamna`)에 속하고, 키는 프로젝트마다 역할을 받습니다. 응답의 `project`가 문서의 프로젝트입니다.
+- **편집자(EDITOR)인 프로젝트:** 올리기, 고치기, 조회
+- **열람자(VIEWER)인 프로젝트:** 조회만
+- **속하지 않은 프로젝트:** 문서가 없는 것처럼 404가 나옵니다.
+- 올릴 때 편집할 수 있는 프로젝트가 하나면 프로젝트를 빼도 되고, 여럿이면 `project`를 넣어야 합니다.
 - **문서 삭제:** 어느 방법으로도 할 수 없습니다. 실수로 지워지지 않도록 웹 화면에서만 삭제합니다.
 
 ## 주소
@@ -78,6 +81,7 @@ claude mcp add --transport http render-box "$RB_API/mcp" \
 ```sh
 curl "$RB_API/api/v1/html" \
   -H "Authorization: Bearer $RB_KEY" \
+  --url-query "project=tamna" \
   --url-query "title=회원가입 화면" \
   --url-query "description=1차 기획안" \
   --url-query "link=기획서|https://example.com/spec" \
@@ -87,6 +91,7 @@ curl "$RB_API/api/v1/html" \
 
 | 쿼리 | 필수 | 설명 |
 | --- | :---: | --- |
+| `project` | △ | 올릴 프로젝트 slug. 편집할 수 있는 프로젝트가 하나면 빼도 됩니다 |
 | `title` | O | 제목 (최대 200자) |
 | `description` | | 설명 (최대 2,000자) |
 | `link` | | 관련 링크. 여러 번 쓸 수 있습니다(최대 10개). `이름\|주소` 또는 주소만. 주소가 빈 링크는 오류 없이 빠집니다 |
@@ -98,6 +103,7 @@ curl "$RB_API/api/v1/html" \
 ```json
 {
   "document_key": "wnajOnBv8zrEA5IsdXhHhf",
+  "project": "tamna",
   "title": "회원가입 화면",
   "render_url": "https://render.../wnajOnBv8zrEA5IsdXhHhf",
   "admin_url": "https://admin.../html/wnajOnBv8zrEA5IsdXhHhf",
@@ -135,7 +141,7 @@ curl -X PATCH "$RB_API/api/v1/html/<문서키>" \
 ### 조회
 
 ```sh
-curl "$RB_API/api/v1/html" -H "Authorization: Bearer $RB_KEY" --url-query "q=회원가입"   # 목록·검색 (20개씩, &page=2 …)
+curl "$RB_API/api/v1/html" -H "Authorization: Bearer $RB_KEY" --url-query "q=회원가입"   # 목록·검색 (20개씩, &page=2 …, &project=tamna로 한 프로젝트만)
 curl "$RB_API/api/v1/html/<문서키>" -H "Authorization: Bearer $RB_KEY"                 # 문서 정보
 curl "$RB_API/api/v1/html/<문서키>/source" -H "Authorization: Bearer $RB_KEY" -o doc.html  # 원본 내려받기
 curl "$RB_API/api/v1/html/<문서키>/versions" -H "Authorization: Bearer $RB_KEY"       # 버전 목록
@@ -166,7 +172,9 @@ curl -X PUT "$RB_API/api/v1/html/<문서키>/source" \
 | 400 | `invalid_fields` | 제목·설명·링크가 규칙에 맞지 않음 |
 | 400 | `bad_json`, `bad_if_match` | PATCH 본문이나 `If-Match` 형식이 잘못됨 |
 | 401 | `unauthorized` | 키가 없거나 틀림, 또는 회수된 키 |
-| 403 | `forbidden` | 열람자 키로 쓰기를 시도함 |
+| 400 | `project_required` | 편집할 수 있는 프로젝트가 여럿인데 `project`를 빼고 올림 |
+| 403 | `forbidden` | 그 프로젝트에서 열람자인데 쓰기를 시도함 |
+| 404 | `project_not_found` | 속하지 않았거나 없는 프로젝트를 지정함 |
 | 403 | `origin_not_allowed` | 브라우저 페이지에서 호출함 (지원하지 않음) |
 | 404 | `not_found` | 없는 문서나 경로 |
 | 409 | `conflict` | 같은 순간에 다른 수정이 먼저 저장됨. 다시 시도 |

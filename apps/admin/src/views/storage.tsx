@@ -1,4 +1,4 @@
-import type { SessionUser } from "@render-box/auth";
+import type { Membership, SessionUser } from "@render-box/auth";
 import type { PreviousVersionRow, StorageUsage } from "@render-box/documents";
 import { formatFullDate, formatRelativeDate, formatSize, isoDate } from "../lib/format";
 import { Alert, AppPage, BackLink } from "./layout";
@@ -73,20 +73,27 @@ export function StorageSummary({ usage }: { usage: StorageUsage }) {
 
 export function StoragePage({
   user,
+  project,
   usage,
+  byProject,
   versions,
   deleted,
 }: {
   user: SessionUser;
+  project: Membership | null;
   usage: StorageUsage;
+  // The viewer's projects with the bytes each uses (design.md 3.9).
+  byProject: { project: Membership; used: number }[];
   versions: PreviousVersionRow[];
   deleted: number | null;
 }) {
-  const editor = user.role === "EDITOR";
+  const editable = new Set(user.projects.filter((p) => p.role === "EDITOR").map((p) => p.projectId));
+  const names = new Map(user.projects.map((p) => [p.projectId, p.name]));
+  const anyEditable = versions.some((v) => editable.has(v.projectId));
   const level = storageLevel(usage);
   const current = Math.max(0, usage.used - usage.previous);
   return (
-    <AppPage title="저장 공간" user={user}>
+    <AppPage title="저장 공간" user={user} project={project}>
       <div class="space-y-8">
         <div class="space-y-4">
           <BackLink href="/html">목록</BackLink>
@@ -111,6 +118,16 @@ export function StoragePage({
               <dt class="text-fg-subtle">이전 버전</dt>
               <dd class="text-right tabular-nums">{formatSize(usage.previous)}</dd>
             </dl>
+            {byProject.length > 0 ? (
+              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t border-line pt-3 text-sm" aria-label="프로젝트별 사용량">
+                {byProject.map((p) => (
+                  <>
+                    <dt class="text-fg-subtle">{p.project.name}</dt>
+                    <dd class="text-right tabular-nums">{formatSize(p.used)}</dd>
+                  </>
+                ))}
+              </dl>
+            ) : null}
             <p class={ui.hint}>
               {level === "full"
                 ? "가득 차서 새로 올리기와 HTML 교체가 막혀 있습니다. 이전 버전이나 안 쓰는 문서를 지우면 다시 올릴 수 있습니다."
@@ -122,7 +139,7 @@ export function StoragePage({
         <section class="space-y-3">
           <h2 class={ui.h2}>이전 버전 (지우면 공간이 많이 생기는 순서)</h2>
           {versions.length === 0 ? (
-            <p class="text-fg-subtle">이전 버전이 없습니다.</p>
+            <p class="text-fg-subtle">내가 속한 프로젝트에 이전 버전이 없습니다.</p>
           ) : (
             <form
               method="post"
@@ -134,7 +151,7 @@ export function StoragePage({
               <ul class={`${ui.tableWrap} divide-y divide-line`}>
                 {versions.map((v) => (
                   <li class="flex items-start gap-3 px-4 py-3">
-                    {editor ? (
+                    {editable.has(v.projectId) ? (
                       <input
                         type="checkbox"
                         name="version_id"
@@ -143,9 +160,12 @@ export function StoragePage({
                         class="mt-1 size-4 shrink-0 accent-primary"
                       />
                     ) : null}
-                    <label for={editor ? `ver-${v.id}` : undefined} class="min-w-0 flex-1 text-sm">
+                    <label for={editable.has(v.projectId) ? `ver-${v.id}` : undefined} class="min-w-0 flex-1 text-sm">
                       <span class="block font-medium break-keep">
                         {v.title} <span class="font-normal text-fg-muted">· v{v.seq}</span>
+                        {user.projects.length > 1 ? (
+                          <span class="ml-1.5 font-normal text-fg-subtle">{names.get(v.projectId)}</span>
+                        ) : null}
                       </span>
                       <span class="block text-xs text-fg-subtle">
                         {v.createdByName} ·{" "}
@@ -162,13 +182,13 @@ export function StoragePage({
                   </li>
                 ))}
               </ul>
-              {editor ? (
+              {anyEditable ? (
                 <button type="submit" class={ui.danger}>
                   <Icon name="trash-2" />
                   선택한 버전 지우기
                 </button>
               ) : (
-                <p class={ui.hint}>버전을 지우려면 편집 권한이 필요합니다.</p>
+                <p class={ui.hint}>버전을 지우려면 그 프로젝트의 편집 권한이 필요합니다.</p>
               )}
             </form>
           )}

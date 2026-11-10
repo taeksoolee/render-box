@@ -2,6 +2,7 @@ import { accessKeys, sessions, type Db } from "@render-box/db";
 import { randomBase62, sha256Hex } from "@render-box/shared";
 import { and, eq, lt } from "drizzle-orm";
 import { SESSION_TTL_MS, type Host } from "./cookies";
+import { loadMemberships, type Membership } from "./projects";
 
 export type SessionUser = {
   sessionId: string;
@@ -9,7 +10,7 @@ export type SessionUser = {
   csrfToken: string | null;
   keyId: number;
   name: string;
-  role: "EDITOR" | "VIEWER";
+  projects: Membership[];
 };
 
 export async function createSession(
@@ -34,7 +35,14 @@ export async function createSession(
 
 // Expiry and revocation are checked on every read; expired rows are left for
 // deleteExpiredSessions to remove at the next login (no cron, design.md 3.3).
-export async function loadSession(db: Db, token: string | undefined, host: Host, now = Date.now()) {
+// Memberships are read fresh each time (design.md 3.9).
+export async function loadSession(
+  db: Db,
+  d1: D1Database,
+  token: string | undefined,
+  host: Host,
+  now = Date.now(),
+): Promise<SessionUser | null> {
   if (!token) return null;
   const id = await sha256Hex(token);
   const rows = await db
@@ -45,7 +53,6 @@ export async function loadSession(db: Db, token: string | undefined, host: Host,
       expiresAt: sessions.expiresAt,
       keyId: accessKeys.id,
       name: accessKeys.name,
-      role: accessKeys.role,
       revokedAt: accessKeys.revokedAt,
     })
     .from(sessions)
@@ -55,7 +62,7 @@ export async function loadSession(db: Db, token: string | undefined, host: Host,
   const row = rows[0];
   if (!row || row.expiresAt <= now || row.revokedAt !== null) return null;
   const { expiresAt: _e, revokedAt: _r, ...user } = row;
-  return user satisfies SessionUser;
+  return { ...user, projects: await loadMemberships(d1, user.keyId) };
 }
 
 export async function deleteSessionFamily(db: Db, familyId: string): Promise<void> {

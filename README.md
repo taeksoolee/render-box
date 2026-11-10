@@ -29,7 +29,9 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
   오래된 버전을 몰래 지우지 않습니다. 정리 화면에서 지웠을 때 공간이 많이 생기는 순서로 골라 지웁니다.
 - **AI 도구에서 바로 올리기 (MCP)** — Claude Code에서 "render-box에 올려 줘"라고 하면 올리고 주소를 알려 줍니다.
 - **스크립트·CI (REST API)** — `curl`로 올리기·교체·조회.
-- **개인 접근 키** — 사람마다 다른 키로 로그인하고, 편집자/열람자 역할을 나눕니다. 키를 회수하면 그 키의 모든 세션이 바로 끊깁니다.
+- **프로젝트** — 문서는 프로젝트(예: `tamna`)에 속하고, 키는 프로젝트마다 편집자/열람자 역할을 받습니다.
+  속하지 않은 프로젝트의 문서는 주소를 알아도 열리지 않습니다.
+- **개인 접근 키** — 사람마다 다른 키로 로그인합니다. 키를 회수하면 그 키의 모든 세션이 바로 끊깁니다.
 
 ## 격리
 
@@ -49,8 +51,10 @@ git clone https://github.com/taeksoolee/render-box.git && cd render-box
 nvm use && pnpm install
 pnpm --filter @render-box/admin exec wrangler login
 pnpm setup:remote
-pnpm key create --remote --name <이름> --role EDITOR
+pnpm key create --remote --name <이름> --project default --role EDITOR
 ```
+
+처음에는 `default`("기본") 프로젝트 하나가 있습니다. 프로젝트를 더 만들고 키를 넣는 방법은 아래 표를 보세요.
 
 `pnpm setup:remote`가 다음을 한 번에 합니다. 다시 실행해도 이미 있는 것은 그대로 씁니다.
 
@@ -65,8 +69,11 @@ pnpm key create --remote --name <이름> --role EDITOR
 | 명령 | 설명 |
 | --- | --- |
 | `pnpm db:migrate:remote` → `pnpm deploy:prod` → `pnpm check:headers` | 업데이트 배포와 점검. 새 마이그레이션이 있으면 반드시 먼저 |
-| `pnpm key create --remote --name <이름> --role EDITOR\|VIEWER` | 키 발급. 키 원문은 이때 한 번만 보입니다 |
-| `pnpm key list --remote` / `revoke <prefix> --remote` / `set-role <prefix> VIEWER --remote` | 키 목록·회수·역할 변경 |
+| `pnpm key create --remote --name <이름> --project <slug> --role EDITOR\|VIEWER` | 키 발급. 키 원문은 이때 한 번만 보입니다 |
+| `pnpm key list --remote` / `revoke <prefix> --remote` | 키 목록(속한 프로젝트와 역할)·회수 |
+| `pnpm project create <slug> --name <이름> --remote` | 프로젝트 만들기 (예: `tamna --name 탐나`) |
+| `pnpm project grant <prefix> <slug> --role EDITOR\|VIEWER --remote` | 키를 프로젝트에 넣거나 역할 바꾸기. `revoke <prefix> <slug>`로 빼기 |
+| `pnpm project list` / `members <slug>` / `rename <slug> --name …` / `move <문서 키> <slug>` (`--remote`) | 프로젝트 목록·멤버·이름 바꾸기·문서 옮기기 |
 
 `render-box.deploy.json`에서 바꿀 수 있는 값:
 
@@ -96,8 +103,8 @@ Cloudflare 계정 없이 로컬 D1로 돌아갑니다.
 ```sh
 nvm use && pnpm install
 pnpm setup:local        # .dev.vars 생성(공유 HANDOFF_SECRET) + 로컬 D1 마이그레이션
-pnpm key create --name 김기획 --role EDITOR
-pnpm key create --name 박개발 --role VIEWER
+pnpm key create --name 김기획 --project default --role EDITOR
+pnpm key create --name 박개발 --project default --role VIEWER
 pnpm dev                # 렌더링 :8788 → 관리 :8787 → API :8789 순서로 실행
 ```
 

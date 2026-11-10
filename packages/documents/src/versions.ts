@@ -15,6 +15,7 @@ export type VersionRow = {
 
 export type PreviousVersionRow = VersionRow & {
   documentKey: string;
+  projectId: number;
   title: string;
   // Bytes deleting this version alone would free: 0 when another version or
   // the document still uses the same blob.
@@ -47,43 +48,55 @@ export async function findVersion(d1: D1Database, documentId: number, seq: numbe
     .first<VersionRow>();
 }
 
-// Every non-current version for the storage screen, ordered by the space
-// deleting it would free, so shared blobs (which free nothing) sink.
-export async function listPreviousVersions(d1: D1Database, limit = 200): Promise<PreviousVersionRow[]> {
+const marks = (n: number) => Array.from({ length: n }, () => "?").join(", ");
+
+// Non-current versions of the given projects for the storage screen, ordered
+// by the space deleting each would free, so shared blobs (which free nothing)
+// sink.
+export async function listPreviousVersions(
+  d1: D1Database,
+  projectIds: number[],
+  limit = 200,
+): Promise<PreviousVersionRow[]> {
+  if (projectIds.length === 0) return [];
   const { results } = await d1
     .prepare(
-      `SELECT ${COLUMNS}, d.document_key AS documentKey, d.title,
+      `SELECT ${COLUMNS}, d.document_key AS documentKey, d.title, d.project_id AS projectId,
               CASE WHEN d.blob_id <> v.blob_id
                     AND (SELECT COUNT(*) FROM html_document_versions s WHERE s.blob_id = v.blob_id) = 1
                    THEN v.html_size ELSE 0 END AS freesBytes
        FROM html_document_versions v
        JOIN html_documents d ON d.id = v.document_id
        JOIN access_keys k ON k.id = v.created_by
-       WHERE ${NOT_CURRENT}
+       WHERE ${NOT_CURRENT} AND d.project_id IN (${marks(projectIds.length)})
        ORDER BY freesBytes DESC, v.html_size DESC, v.created_at ASC
        LIMIT ?`,
     )
-    .bind(limit)
+    .bind(...projectIds, limit)
     .all<PreviousVersionRow>();
   return results;
 }
 
-// Deletes the given versions except current ones (checked in SQL, so a stale
-// form cannot remove the HTML a document shows), then the blobs nothing uses.
-// Returns how many versions were deleted.
-export async function deleteVersions(d1: D1Database, versionIds: number[]): Promise<number> {
+// Deletes the given versions of documents in `projectIds` (the projects the
+// caller edits), except current ones. Both are checked in SQL, so a stale or
+// forged form cannot remove the HTML a document shows or touch another
+// project. Then frees the blobs nothing uses. Returns how many were deleted.
+export async function deleteVersions(d1: D1Database, versionIds: number[], projectIds: number[]): Promise<number> {
   const ids = [...new Set(versionIds)].filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 500);
-  if (ids.length === 0) return 0;
-  const marks = ids.map(() => "?").join(", ");
+  if (ids.length === 0 || projectIds.length === 0) return 0;
   const { results } = await d1
-    .prepare(`SELECT v.id, v.blob_id AS blobId FROM html_document_versions v WHERE v.id IN (${marks}) AND ${NOT_CURRENT}`)
-    .bind(...ids)
+    .prepare(
+      `SELECT v.id, v.blob_id AS blobId FROM html_document_versions v
+       JOIN html_documents d ON d.id = v.document_id
+       WHERE v.id IN (${marks(ids.length)}) AND d.project_id IN (${marks(projectIds.length)}) AND ${NOT_CURRENT}`,
+    )
+    .bind(...ids, ...projectIds)
     .all<{ id: number; blobId: number }>();
   if (results.length === 0) return 0;
   const doomed = results.map((r) => r.id);
   await d1.batch([
     d1
-      .prepare(`DELETE FROM html_document_versions WHERE id IN (${doomed.map(() => "?").join(", ")})`)
+      .prepare(`DELETE FROM html_document_versions WHERE id IN (${marks(doomed.length)})`)
       .bind(...doomed),
     ...[...new Set(results.map((r) => r.blobId))].flatMap((blobId) => releaseBlobStatements(d1, blobId)),
   ]);

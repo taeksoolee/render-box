@@ -1,4 +1,4 @@
-import type { SessionUser } from "@render-box/auth";
+import type { Membership, SessionUser } from "@render-box/auth";
 import type { DocumentFormErrors, DocumentFormValues, LinkRow } from "../lib/document-form";
 import { LIMITS } from "../lib/document-form";
 import { formatFullDate, formatSize } from "../lib/format";
@@ -281,12 +281,15 @@ function HtmlInput({ mode, kept, error }: { mode: FormMode; kept: KeptUpload; er
 
 export function DocumentFormPage({
   user,
+  project,
   mode,
   values,
   errors,
   kept,
 }: {
   user: SessionUser;
+  // Where a new document goes, or the edited document's project.
+  project: Membership;
   mode: FormMode;
   values: DocumentFormValues;
   errors: DocumentFormErrors;
@@ -303,10 +306,12 @@ export function DocumentFormPage({
   ].filter(Boolean) as { href: string; text: string }[];
 
   return (
-    <AppPage title={edit ? `문서 수정 · ${mode.title}` : "새 HTML 등록"} user={user}>
+    <AppPage title={edit ? `문서 수정 · ${mode.title}` : "새 HTML 등록"} user={user} project={project}>
       <div class="space-y-6">
-        <BackLink href={edit ? `/html/${mode.documentKey}` : "/html"}>{edit ? mode.title : "목록"}</BackLink>
-        <h1 class="text-xl font-semibold">{edit ? "문서 수정" : "새 HTML 등록"}</h1>
+        <BackLink href={edit ? `/html/${mode.documentKey}` : `/html?project=${encodeURIComponent(project.slug)}`}>
+          {edit ? mode.title : `${project.name} 목록`}
+        </BackLink>
+        <h1 class="text-xl font-semibold">{edit ? "문서 수정" : `새 HTML 등록 · ${project.name}`}</h1>
 
         {edit && mode.conflict ? (
           <Alert kind="error" title="다른 사람이 먼저 수정했습니다" focus>
@@ -348,6 +353,7 @@ export function DocumentFormPage({
           data-mode={mode.kind}
         >
           <input type="hidden" name="_csrf" value={user.csrfToken ?? ""} />
+          {edit ? null : <input type="hidden" name="project" value={project.slug} />}
           <input type="hidden" name="upload_id" value={kept ? String(kept.id) : ""} data-upload-id />
           {values.version ? <input type="hidden" name="version" value={String(values.version)} /> : null}
 

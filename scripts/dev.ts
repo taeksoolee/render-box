@@ -9,9 +9,16 @@ const APPS = [
   { name: "api", url: "http://api.localhost:8789/healthz" },
 ];
 
+// Each app runs in its own process group: pnpm does not pass signals on to
+// wrangler and workerd, so stopping only the direct child left them holding
+// the ports. Signalling the group (-pid) stops all of them.
 const children: ChildProcess[] = [];
 const stop = () => {
-  for (const child of children) child.kill("SIGTERM");
+  for (const child of children) {
+    try {
+      if (child.pid) process.kill(-child.pid, "SIGTERM");
+    } catch {}
+  }
   process.exit();
 };
 process.on("SIGINT", stop);
@@ -38,7 +45,10 @@ async function waitFor(url: string, child: ChildProcess) {
 }
 
 for (const app of APPS) {
-  const child = spawn("pnpm", ["--filter", `@render-box/${app.name}`, "dev"], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn("pnpm", ["--filter", `@render-box/${app.name}`, "dev"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
   children.push(child);
   prefix(app.name, child.stdout!, process.stdout);
   prefix(app.name, child.stderr!, process.stderr);

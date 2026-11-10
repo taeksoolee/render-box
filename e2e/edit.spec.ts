@@ -137,7 +137,7 @@ test("mobile layout has no horizontal scroll", async ({ browser }) => {
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
   await page.goto(`${APP}/html`);
-  await page.locator("a[href^='/html/']:not([href='/html/new']):visible").first().click();
+  await page.locator("a[href^='/html/']:not([href^='/html/new']):visible").first().click();
   await expect(page).toHaveURL(/\/html\/[0-9A-Za-z]{22}$/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, "detail").toBeLessThanOrEqual(0);
