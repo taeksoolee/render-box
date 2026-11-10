@@ -12,11 +12,11 @@ inspector_port = 9230
 
 # Production values. Local overrides live in .dev.vars (see .dev.vars.example).
 [vars]
-APP_ORIGIN = "https://render-box-admin.example.workers.dev"
-RENDER_ORIGIN = "https://render-box-render.example.workers.dev"
+APP_ORIGIN = "https://render-box-admin.leets1490.workers.dev"
+RENDER_ORIGIN = "https://render-box-render.leets1490.workers.dev"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "render-box"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "7a6ff898-fd18-4613-bc56-eb6b7bc76b70"
 migrations_dir = "../../packages/db/migrations"

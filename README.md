@@ -59,6 +59,7 @@ pnpm dev                # 렌더링 :8788 → 관리 :8787 → API :8789 순서�
 | `pnpm test` | 단위 테스트 (Vitest) |
 | `RB_EDITOR_KEY=… RB_VIEWER_KEY=… pnpm test:e2e` | 브라우저 테스트: Chromium·Firefox·WebKit(Safari). `pnpm dev` 실행 중이어야 하고, 처음 한 번 `pnpm exec playwright install chromium firefox webkit` |
 | `pnpm typecheck` | 타입 검사 |
+| `pnpm db:migrate:remote` → `pnpm deploy:prod` → `pnpm check:headers` | 운영 배포와 점검 ([docs/design.md](docs/design.md) 9.3) |
 
 브라우저 테스트는 한 번에 하나씩 실행합니다. 로컬에서는 여러 Worker 프로세스가 같은 SQLite 파일을 함께 쓰므로, 테스트를 병렬로 돌리면 D1이 간헐적으로 `Failed to get session commit token` 오류를 냅니다. 운영 D1에는 해당하지 않습니다.
 

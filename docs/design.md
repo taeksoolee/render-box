@@ -770,20 +770,29 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 
 ## 9.3 배포 (로컬 검증 후)
 
-1. `wrangler d1 create render-box`로 D1 데이터베이스를 만들고, ID를 두 앱의 `wrangler.toml`에 넣는다.
-2. `HANDOFF_SECRET`을 두 앱에 `wrangler secret put`으로 등록한다.
-3. `pnpm db:migrate:remote`
-4. `pnpm deploy` (admin, render 순서)
-5. 9.4 점검
-6. `pnpm key create --remote ...`로 첫 키를 발급한다.
+처음 한 번:
+
+1. `wrangler d1 create render-box`로 D1 데이터베이스를 만들고, ID를 세 앱의 `wrangler.toml`에 넣는다.
+2. 세 앱 `wrangler.toml`의 `APP_ORIGIN`, `RENDER_ORIGIN`, `API_ORIGIN`을 실제 주소(`https://<worker 이름>.<계정 서브도메인>.workers.dev`)로 바꾼다. 다른 호스트의 GET은 이 주소로 이동시키므로 틀리면 모든 화면이 열리지 않는다.
+3. `HANDOFF_SECRET`을 admin과 render에 **같은 값**으로 `wrangler secret put`한다 (api는 쓰지 않는다).
+
+배포할 때마다:
+
+1. `pnpm db:migrate:remote` (새 마이그레이션이 없으면 아무것도 하지 않는다)
+2. `pnpm deploy:prod`: render → admin → api 순서. admin은 배포 전에 CSS·HTMX를 빌드한다 (`build:assets`, 빌드 결과는 저장소에 없다).
+   - `pnpm deploy`는 pnpm 내장 명령이라 스크립트 이름을 `deploy:prod`로 했다.
+3. `pnpm check:headers` (9.4)
+4. 처음이면 `pnpm key create --remote ...`로 첫 키를 발급한다.
 
 ## 9.4 배포 후 점검
 
-운영 URL에 실제 요청을 보내 확인한다 (`scripts/check-headers.ts`).
+`pnpm check:headers`(`scripts/check-headers.ts`)가 운영 URL에 실제 요청을 보내 확인한다. 주소는 각 앱의 `wrangler.toml`에서 읽는다.
 
+- 세 호스트의 `/healthz`가 200이다.
 - 렌더링 호스트의 404 응답에 CSP `sandbox`가 있고 `allow-same-origin`이 없다.
 - 관리 호스트의 HTML 응답에 `Content-Encoding`이 없다 (`Accept-Encoding: gzip, br`로 요청).
-- 두 호스트의 모든 응답에서 CSP 헤더가 정확히 1개다.
+- 관리·렌더링 응답에서 CSP 헤더가 정확히 1개고, HSTS가 있다.
+- API의 `GET /mcp`는 405, 키 없는 REST 요청은 401이다.
 
 ## 9.5 로그·백업
 

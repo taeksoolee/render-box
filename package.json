@@ -12,6 +12,9 @@
     "typecheck": "for p in apps/admin apps/render apps/api packages/auth packages/db packages/documents packages/shared; do tsc -p $p --noEmit || exit 1; done",
     "db:generate": "pnpm --filter @render-box/db generate",
     "db:migrate:local": "pnpm --filter @render-box/admin exec wrangler d1 migrations apply DB --local --persist-to ../../.wrangler/state",
+    "db:migrate:remote": "pnpm --filter @render-box/admin exec wrangler d1 migrations apply DB --remote",
+    "deploy:prod": "pnpm --filter @render-box/render run deploy && pnpm --filter @render-box/admin run deploy && pnpm --filter @render-box/api run deploy",
+    "check:headers": "tsx scripts/check-headers.ts",
     "key": "tsx scripts/key.ts",
     "setup:local": "tsx scripts/setup-local.ts && pnpm db:migrate:local",
     "test:e2e": "playwright test"
