@@ -32,8 +32,13 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-// Returns the cleaned link list (empty rows dropped) plus any errors. Row
-// errors are attached to `fields.links` for re-display (design.md 4.5).
+// A scheme typed with nothing after it counts as an empty address.
+const isBlankUrl = (url: string) => url === "" || /^https?:\/\/$/i.test(url);
+
+// Returns the cleaned link list plus any errors. Links are optional, so a row
+// without an address (empty, name only, or just "https://") is dropped rather
+// than rejected. Row errors are attached to `fields.links` for re-display
+// (design.md 4.5).
 export function validateDocumentFields(fields: DocumentFields): {
   errors: DocumentErrors;
   links: DocumentLink[];
@@ -45,9 +50,8 @@ export function validateDocumentFields(fields: DocumentFields): {
 
   const links: DocumentLink[] = [];
   for (const row of fields.links) {
-    if (!row.label && !row.url) continue;
-    if (!row.url) row.error = "주소를 입력해 주세요. 이름만 있고 주소가 없습니다.";
-    else if (row.url.length > LIMITS.linkUrl || !isHttpUrl(row.url))
+    if (isBlankUrl(row.url)) continue;
+    if (row.url.length > LIMITS.linkUrl || !isHttpUrl(row.url))
       row.error = "http:// 또는 https://로 시작하는 주소만 넣을 수 있습니다.";
     else if (row.label.length > LIMITS.linkLabel) row.error = "링크 이름은 100자까지 쓸 수 있습니다.";
     else links.push({ label: row.label, url: row.url });

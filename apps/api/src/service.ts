@@ -35,7 +35,7 @@ export class ServiceError extends Error {
 }
 
 export type Ctx = { env: Env; key: ActiveKey };
-export type LinkInput = { label?: string; url: string };
+export type LinkInput = { label?: string; url?: string };
 export type FieldsInput = { title?: string; description?: string; links?: LinkInput[] };
 
 const NOT_FOUND = "문서를 찾을 수 없습니다. 목록에서 문서 키를 확인해 주세요.";

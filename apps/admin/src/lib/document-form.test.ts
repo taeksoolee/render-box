@@ -14,11 +14,21 @@ describe("document form (design.md 4.4, 4.5)", () => {
     ]);
   });
 
+  it("drops rows without an address instead of rejecting them (links are optional)", () => {
+    const v = form({
+      title: "t",
+      link_label: ["이름만", "", "기획서", "스킴만"],
+      link_url: ["", "", "https://a.test", "https://"],
+    });
+    const { errors, links } = validateDocumentForm(v);
+    expect(errors).toEqual({});
+    expect(links).toEqual([{ label: "기획서", url: "https://a.test" }]);
+  });
+
   it.each([
     [{ title: "" }, "title"],
     [{ title: "x".repeat(201) }, "title"],
     [{ title: "t", description: "x".repeat(2001) }, "description"],
-    [{ title: "t", link_label: "이름만", link_url: "" }, "links"],
     [{ title: "t", link_label: "", link_url: "javascript:alert(1)" }, "links"],
     [{ title: "t", link_label: Array(11).fill(""), link_url: Array(11).fill("https://a.test") }, "links"],
   ])("rejects %j", (body, field) => {

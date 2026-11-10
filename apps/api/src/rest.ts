@@ -45,7 +45,7 @@ function htmlBody(c: Context<Rest>): ReadableStream<Uint8Array> {
 const patchSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
-  links: z.array(z.object({ label: z.string().optional(), url: z.string() })).optional(),
+  links: z.array(z.object({ label: z.string().optional(), url: z.string().optional() })).optional(),
 });
 
 export const rest = new Hono<Rest>();

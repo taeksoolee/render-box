@@ -15,7 +15,7 @@ export type ToolResult = {
 
 const link = z.object({
   label: z.string().optional().describe("링크 이름 (예: 기획서). 비우면 사이트 주소로 표시"),
-  url: z.string().describe("http:// 또는 https:// 주소"),
+  url: z.string().optional().describe("http:// 또는 https:// 주소. 비우면 이 링크는 저장되지 않음"),
 });
 
 const documentKey = z.string().describe("문서 키 (22자). upload_html이나 list_html 결과의 document_key");
