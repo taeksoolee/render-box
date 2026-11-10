@@ -1018,6 +1018,8 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 - 문서 삭제는 모든 버전·원본·청크를 지운다. 마이그레이션 0001은 기존 문서를 v1으로 채운다
 - 목록 배너(`apps/admin/src/views/storage.test.ts`): 80% 미만은 막대만, 80% 이상 경고, 100% 이상 업로드 차단 안내
 
+**운영 모드 점검 (`pnpm check:prod-mode`, CI 포함):** 개발 모드(`DEV_MODE=1`)는 일부 경로를 건너뛴다. 관리·렌더링 Worker를 `DEV_MODE` 없이 로컬에서 띄워 해시 정적 파일 manifest, `/static/h/` 1년 캐시, HSTS, https만 허용하는 렌더링 CSP를 확인한다. `ASSETS` 바인딩이 빠져 운영 관리 화면이 전부 500이 된 일(D-39) 뒤에 추가했다.
+
 ## 10.4 렌더링
 
 - HTML·CSS·JS가 실행되고 `alert`·`confirm`이 동작한다.

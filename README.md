@@ -116,6 +116,7 @@ pnpm dev                # 렌더링 :8788 → 관리 :8787 → API :8789 순서�
 | --- | --- |
 | `pnpm test` | 단위 테스트 (Vitest). 버전·저장 공간 SQL은 실제 마이그레이션을 Node 내장 SQLite에 적용해 검사 |
 | `pnpm typecheck` | 타입 검사 |
+| `pnpm check:prod-mode` | 관리·렌더링 Worker를 `DEV_MODE` 없이 로컬에서 띄워 운영에서만 도는 경로(해시 정적 파일, HSTS, https 전용 CSP)를 확인. CI에서도 돕니다 |
 | `RB_EDITOR_KEY=… RB_VIEWER_KEY=… pnpm test:e2e` | 브라우저 테스트: Chromium·Firefox·WebKit. `pnpm dev` 실행 중이어야 하고, 처음 한 번 `pnpm exec playwright install chromium firefox webkit` |
 | `RB_EDITOR_KEY=… pnpm screenshots` | README 스크린샷 다시 찍기 (새 로컬 상태에서) |
 

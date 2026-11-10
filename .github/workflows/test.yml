@@ -18,3 +18,7 @@ jobs:
       # Unit tests, including the versions/storage SQL on node:sqlite. The
       # Playwright suite needs the three Workers running and stays local.
       - run: pnpm test
+      # Admin and render with DEV_MODE off: the code paths only production
+      # takes (asset manifest, HSTS, https-only render CSP). Local workerd, no
+      # Cloudflare account.
+      - run: pnpm check:prod-mode
