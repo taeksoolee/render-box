@@ -10,12 +10,16 @@ export function asset(file: string): string {
 }
 
 // Loads the manifest once per isolate from the Worker's own static assets.
-export function loadManifest(assets: Fetcher, origin: string): Promise<void> {
-  loading ??= assets
-    .fetch(new Request(new URL("/static/manifest.json", origin)))
-    .then(async (res) => {
+// Never throws: without it pages use the plain paths, which still work.
+export function loadManifest(assets: Fetcher | undefined, origin: string): Promise<void> {
+  loading ??= (async () => {
+    try {
+      if (!assets) throw new Error("ASSETS binding missing");
+      const res = await assets.fetch(new Request(new URL("/static/manifest.json", origin)));
       if (res.ok) manifest = (await res.json()) as Record<string, string>;
-    })
-    .catch(() => {});
+    } catch (err) {
+      console.error(JSON.stringify({ event: "asset_manifest_unavailable", error: String(err) }));
+    }
+  })();
   return loading;
 }

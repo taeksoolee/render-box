@@ -11,6 +11,8 @@ mode = "smart"
 
 [assets]
 directory = "./public"
+# env.ASSETS: the Worker reads static/manifest.json through it (D-39).
+binding = "ASSETS"
 
 [dev]
 port = 8787
