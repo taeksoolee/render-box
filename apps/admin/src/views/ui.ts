@@ -39,6 +39,10 @@ export const thNum = `${th} text-right`;
 export const tr = "relative border-t border-line hover:bg-canvas";
 export const td = "px-4 py-3 align-top";
 export const tdNum = `${td} text-right tabular-nums text-fg-muted whitespace-nowrap`;
+// For a cell holding an h-8 row action: py-1.5 + 32px centers the action's
+// text on the other cells' first line (py-3 + 20px). Its own class, because
+// adding py-* to `td` loses to py-3 in the generated CSS order.
+export const tdAction = "px-4 py-1.5 align-top";
 export const rowTitle =
   "font-medium text-fg break-keep after:absolute after:inset-0 focus-visible:outline-none " +
   "focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-focus";

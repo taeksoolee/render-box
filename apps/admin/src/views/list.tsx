@@ -176,7 +176,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
                     <td class={`${ui.td} whitespace-nowrap tabular-nums text-fg-muted`}>
                       <When ms={row.updatedAt} />
                     </td>
-                    <td class={`${ui.td} py-2`}>
+                    <td class={ui.tdAction}>
                       <NewWindowLink row={row} origin={data.renderOrigin} />
                     </td>
                   </tr>
