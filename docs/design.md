@@ -277,8 +277,9 @@ html_documents.blob_id → 현재 원본
 ```
 
 - 원본은 바이트 그대로(UTF-8) 저장한다. 서버는 디코딩하지 않는다.
-- 문서와 원본을 분리해 두면 HTML 교체가 "새 원본 업로드 → 문서가 가리키는 원본 변경 → 이전 원본 삭제" 순서가 된다. 그래서 교체 도중 실패해도 문서가 깨지지 않는다.
-- **용량 관리:** 무료 플랜 D1은 DB 하나당 500MB다. 문서 크기는 `html_size`로 관리하며, 운영자는 `pnpm key list`와 함께 총 사용량을 확인할 수 있게 한다(`pnpm db:usage`). 400MB를 넘으면 목록 상단에 관리자용 경고를 표시한다.
+- 문서와 원본을 분리해 두면 HTML 교체가 "새 원본 업로드 → 문서가 가리키는 원본 변경" 순서가 된다. 그래서 교체 도중 실패해도 문서가 깨지지 않는다. 이전 원본은 지우지 않고 버전으로 남긴다 (4.9).
+- 원본은 한 번 저장하면 바뀌지 않는다. 그래서 여러 버전이 같은 원본을 가리킬 수 있다 (복원, 4.9).
+- **용량 관리:** 전체 원본 크기에 상한을 두고, 넘으면 업로드를 거절한다 (4.9).
 
 ## 4.3 업로드 (2단계)
 
@@ -303,7 +304,9 @@ html_documents.blob_id → 현재 원본
 - 빈 본문이면 422.
 - 응답: `{ uploadId, size }`
 
-**연결되지 않은 업로드 정리:** 업로드만 하고 저장하지 않은 원본이 남을 수 있다. Cron 없이, 같은 사용자가 다음에 업로드할 때 함께 정리한다. 기준은 그 사용자가 1시간 이전에 만들었고 어떤 문서도 가리키지 않는 원본이다.
+**연결되지 않은 업로드 정리:** 업로드만 하고 저장하지 않은 원본이 남을 수 있다. Cron 없이, 같은 사용자가 다음에 업로드할 때 함께 정리한다. 기준은 그 사용자가 1시간 이전에 만들었고 어떤 문서도, **어떤 버전도** 가리키지 않는 원본이다.
+
+**용량 검사:** 저장 전에 `사용량 + 올릴 크기`가 상한을 넘으면 507 `storage_full`로 거절한다 (4.9). `Content-Length`가 있으면 본문을 읽기 전에, 없으면(REST chunked) 읽는 중에 넘는 순간 중단하고 지운다.
 
 폼 제출 시 `upload_id` 검증:
 
@@ -394,12 +397,58 @@ JS가 꺼져 있으면 HTML을 업로드할 수 없다. 이 경우 정보 수정
   - 폼에 hidden `version`을 넣는다.
   - `UPDATE ... SET ..., version = version + 1 WHERE id = ? AND version = ? RETURNING blob_id`로 갱신한다.
   - 갱신된 행이 없으면 409를 반환한다. 현재 수정자와 수정일을 보여주고, 입력한 값은 보존한다. 이때 새로 올린 원본은 연결되지 않은 업로드가 되어 이후에 정리된다.
-- 성공했고 원본이 바뀌었다면, 이전 원본의 청크와 blob을 삭제한다(D1 batch).
+- 성공했고 원본이 바뀌었다면 새 버전 행을 추가한다 (4.9). 이전 원본은 지우지 않는다.
 
 **삭제:**
 
-- `POST /html/:key/delete`로 처리한다. 문서, 원본, 청크를 D1 batch로 함께 삭제한다.
+- `POST /html/:key/delete`로 처리한다. 문서, 모든 버전, 다른 곳에서 가리키지 않게 된 원본과 청크를 D1 batch로 함께 삭제한다.
 - 성공하면 303 → `/html?deleted=1`.
+
+## 4.9 버전과 저장 용량
+
+HTML을 교체해도 이전 원본을 남기고, 전체 용량에 상한을 둔다. 용량이 차면 자동으로 지우지 않고 업로드를 막는다. 공간은 EDITOR가 직접 지워서 만든다 ([decisions.md](decisions.md) D-35).
+
+**버전**
+
+- 문서의 HTML 하나하나가 버전이다. 등록하면 버전 1, HTML을 교체할 때마다 다음 번호가 생긴다. 현재 HTML도 버전 행이 있다 (6.6).
+- 제목·설명·링크만 고치면 버전이 생기지 않는다.
+- 버전 번호(`seq`)는 동시 수정 검사용 `html_documents.version`과 별개다. `version`은 정보만 고쳐도 올라가므로, 둘을 섞으면 HTML 버전 번호가 건너뛴다.
+- 번호는 문서 안에서 계속 올라가며, 버전을 지워도 재사용하지 않는다.
+- MCP `update_html`과 REST `PUT /source`도 같은 방식으로 버전을 만든다.
+
+**보기**
+
+- 렌더링 URL(`RENDER_ORIGIN/{document_key}`)은 항상 현재 버전을 보여 준다.
+- 이전 버전은 `RENDER_ORIGIN/{document_key}/v/{seq}`로 본다. 헤더, 인증, 스토리지 대체 스크립트는 현재 버전과 같다.
+- 관리 호스트: `/html/:key/v/:seq/source`, `/html/:key/v/:seq/download` (4.8과 같은 응답 형식)
+
+**복원 (EDITOR)**
+
+- 고른 버전과 **같은 원본을 가리키는 새 버전**을 만든다. 원본을 복사하지 않으므로 용량과 CPU가 들지 않는다.
+- 문서 수정과 같이 `version`으로 낙관적 잠금을 건다. 충돌하면 409.
+
+**버전 삭제 (EDITOR, 웹 화면만)**
+
+- 현재 버전은 지울 수 없다. 현재 HTML을 없애려면 문서를 삭제한다.
+- 버전 행을 지우고, 그 원본을 다른 버전이나 문서가 더는 가리키지 않으면 원본과 청크도 지운다 (한 D1 batch).
+- 상세 화면에서 하나씩, 저장 공간 화면(`/storage`)에서 여러 개를 한 번에 지운다.
+- 어느 EDITOR나 지울 수 있다. 올린 사람만 지울 수 있게 하면 그 사람이 없을 때 용량이 막힌 채로 남는다.
+- MCP·REST에는 삭제가 없다 (D-32, D-33과 같은 이유).
+
+**용량 상한**
+
+- 사용량 = `SUM(html_blobs.size)`. 현재 버전, 이전 버전, 아직 연결되지 않은 업로드를 모두 포함하고, 여러 버전이 함께 쓰는 원본은 한 번만 센다.
+- 상한은 `STORAGE_LIMIT_MB`(기본 400), 경고 기준은 `STORAGE_WARN_PERCENT`(기본 80)다 (9.1). 무료 플랜 D1 한도(500MB)보다 낮게 둬서, 원본이 상한에 닿아도 세션·로그인 같은 쓰기는 계속 된다. 유료 플랜이면 올려도 된다.
+- 업로드(웹 `PUT /uploads`, REST `POST`·`PUT /source`, MCP `upload_html`·`update_html`)마다 검사한다 (4.3). 넘으면 507 `storage_full`: "저장 공간이 부족합니다. 이전 버전이나 안 쓰는 문서를 지워 주세요."
+- 동시에 올리면 검사 사이에 상한을 조금 넘을 수 있다. 상한 아래 여유(100MB)로 감당한다.
+- 사용량 계산은 원본 수만큼 행을 읽는다. 원본 수백 개 규모에서는 무료 플랜 읽기 한도(하루 500만 행)에 영향이 없다. 수만 개가 되면 집계 행을 따로 둔다.
+
+**표시**
+
+- 목록 상단: `저장 공간 123 MB / 400 MB · 이전 버전 45 MB` → `/storage` 링크
+- 경고 기준을 넘으면 warning 배너, 상한을 넘으면 danger 배너를 모두에게 보여 준다.
+- 상세: 버전 목록(번호, 올린 사람, 날짜, 크기, 현재 표시, [보기] [소스] [복원] [삭제])
+- `/storage`: 사용량 요약과 이전 버전 전체를 **크기 순**으로 보여 준다. 체크박스로 골라 한 번에 지운다. 큰 것 몇 개만 지워도 공간이 생기는 경우가 많기 때문이다.
 
 ---
 
@@ -584,7 +633,24 @@ PK: `(blob_id, seq)`
 
 인덱스: `document_key`(UNIQUE), `updated_at`, `blob_id`
 
-## 6.6 마이그레이션
+## 6.6 html_document_versions
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| document_id | INTEGER NOT NULL | html_documents.id |
+| seq | INTEGER NOT NULL | 문서 안의 버전 번호 (1부터, 재사용 안 함) |
+| blob_id | INTEGER NOT NULL | html_blobs.id. 복원한 버전은 이전 버전과 같은 값 |
+| html_size | INTEGER NOT NULL | |
+| restored_from | INTEGER | 복원으로 만든 버전이면 원래 버전의 seq |
+| created_by | INTEGER NOT NULL | access_keys.id |
+| created_at | INTEGER NOT NULL | |
+
+- UNIQUE `(document_id, seq)`, 인덱스 `blob_id`
+- 현재 버전은 `document_id`별 가장 큰 `seq`다. `html_documents.blob_id`는 렌더링을 빠르게 하려고 현재 버전의 원본을 그대로 들고 있다.
+- 마이그레이션할 때 기존 문서마다 현재 HTML을 버전 1로 넣는다.
+
+## 6.7 마이그레이션
 
 - 스키마는 `packages/db`의 Drizzle 정의로 관리하고, `drizzle-kit generate`로 SQL 마이그레이션을 만든다.
 - 적용은 `wrangler d1 migrations apply`로 한다. 로컬은 `--local`, 운영은 `--remote`.
@@ -614,6 +680,12 @@ PK: `(blob_id, seq)`
 | GET | `/html/:key/edit` | EDITOR | 수정 화면 |
 | POST | `/html/:key` | EDITOR | 수정 |
 | POST | `/html/:key/delete` | EDITOR | 삭제 |
+| GET | `/html/:key/v/:seq/source` | 전체 | 이전 버전 원본 `text/plain` 표시 |
+| GET | `/html/:key/v/:seq/download` | 전체 | 이전 버전 원본 다운로드 |
+| POST | `/html/:key/v/:seq/restore` | EDITOR | 복원 (4.9) |
+| POST | `/html/:key/v/:seq/delete` | EDITOR | 버전 삭제 (현재 버전은 400) |
+| GET | `/storage` | 전체 | 저장 공간 화면 |
+| POST | `/storage/delete` | EDITOR | 고른 이전 버전 한꺼번에 삭제 |
 
 - `/html/new`는 `/html/:key`보다 먼저 등록한다.
 - `/source`, `/download`는 `text/plain; charset=utf-8`과 `nosniff`로 응답한다. 관리 호스트는 사용자 HTML을 `text/html`로 절대 반환하지 않는다.
@@ -625,7 +697,8 @@ PK: `(blob_id, seq)`
 | --- | --- | --- | --- |
 | GET | `/healthz` | 없음 | 상태 확인 |
 | GET | `/__auth` | 토큰 | 핸드오프 → 렌더링 세션 발급 |
-| GET | `/:documentKey` | 전체 | 렌더링 |
+| GET | `/:documentKey` | 전체 | 렌더링 (현재 버전) |
+| GET | `/:documentKey/v/:seq` | 전체 | 이전 버전 렌더링 (4.9) |
 | 그 외 | | | 404 |
 
 ## 7.3 미들웨어 순서
@@ -745,6 +818,8 @@ UI 디자인 가이드(토큰, 레이아웃, 컴포넌트, 문구)는 [ui.md](ui
 | `RENDER_ORIGIN` | 변수 | O | O | 렌더링 호스트 출처 |
 | `HANDOFF_SECRET` | 시크릿 | O | O | 핸드오프 토큰 서명 키 (32바이트 이상 난수). 두 앱이 같은 값을 쓴다 |
 | `DEV_MODE` | 변수 | O | O | 로컬에서만 `1` (9.2) |
+| `STORAGE_LIMIT_MB` | 변수 | O | - | HTML 원본 전체 용량 상한. 기본 400. api 앱도 쓴다 (4.9) |
+| `STORAGE_WARN_PERCENT` | 변수 | O | - | 경고 배너 기준(%). 기본 80 |
 | `API_ORIGIN` | 변수 | - | - | API 호스트 출처. api 앱만 쓴다 (api 앱은 `DB`, `APP_ORIGIN`, `RENDER_ORIGIN`도 쓰고 `HANDOFF_SECRET`은 쓰지 않는다) |
 
 - 운영 시크릿은 `wrangler secret put`으로 등록한다.
@@ -959,10 +1034,11 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 | `PATCH /html/:key` | EDITOR | JSON `{title?, description?, links?}` (64KB까지). 빠진 항목 유지, 빈 배열·빈 문자열은 지움 |
 | `GET /html?q=&page=` | 전체 | 목록 20개씩 (웹 목록과 같은 검색) |
 | `GET /html/:key` | 전체 | 문서 정보, `ETag: "<version>"` |
+| `GET /html/:key/versions` | 전체 | 버전 목록 (번호, 크기, 올린 사람, 날짜, `render_url`) |
 | `GET /html/:key/source` | 전체 | 원본 바이트. `application/octet-stream`, `Content-Disposition: attachment`, `CSP: sandbox`로 이 출처에서 실행되지 않게 한다 |
 
 - **동시 수정:** `If-Match: "<version>"`을 보내면 버전이 다를 때 412(`version_mismatch`). 없으면 직전에 읽은 버전으로 낙관적 잠금만 건다 (충돌 시 409).
-- **오류 형식:** `{"error": {"code", "message"}}`. 코드는 `unauthorized`, `locked`, `forbidden`, `invalid_fields`, `not_found`, `too_large`, `empty`, `nul_byte`, `conflict`, `version_mismatch`, `bad_if_match`, `bad_json`, `origin_not_allowed`.
+- **오류 형식:** `{"error": {"code", "message"}}`. 코드는 `unauthorized`, `locked`, `forbidden`, `invalid_fields`, `not_found`, `too_large`, `storage_full`, `empty`, `nul_byte`, `conflict`, `version_mismatch`, `bad_if_match`, `bad_json`, `origin_not_allowed`.
 - 크기: `Content-Length`가 10MB를 넘으면 본문을 읽기 전에 413. 길이 없는(chunked) 본문은 저장 중 10MB를 넘는 순간 중단하고 지운 청크를 정리한다.
 - **삭제 API는 없다** (MCP와 같은 이유).
 - 이미지 처리(4.6)는 하지 않는다. 올린 HTML을 그대로 저장한다.
@@ -1032,7 +1108,6 @@ MVP 1 완료 후 착수한다.
 
 | 기능 | 메모 |
 | --- | --- |
-| 버전 관리 | HTML을 교체할 때 이전 blob을 지우지 않고 `html_document_versions(document_id, version, blob_id, ...)`로 남긴다. 저장 용량(D1 500MB)을 고려해 문서당 보관 개수를 제한한다 |
 | 회사 도메인 | 도메인 DNS가 Cloudflare에 있으면 Workers Custom Domain을 연결하고 `APP_ORIGIN`/`RENDER_ORIGIN`만 바꾼다. 관리 화면 압축은 Compression Rules로 끈다 |
 | 저장 용량 확장 | D1 용량이 부족해지면 HTML 원본을 R2로 옮긴다 (결제 수단 등록 필요). `html_blobs`에 저장 위치 컬럼을 추가한다 |
 | 코드 에디터 (Monaco) | 원본은 페이지에 넣지 않고 `/html/:key/source`에서 받아 와 로드한다 |
