@@ -30,7 +30,7 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 - **AI 도구에서 바로 올리기 (MCP)** — Claude Code에서 "render-box에 올려 줘"라고 하면 올리고 주소를 알려 줍니다.
 - **스크립트·CI (REST API)** — `curl`로 올리기·교체·조회.
 - **프로젝트** — 문서는 프로젝트(예: `tamna`)에 속하고, 키는 프로젝트마다 편집자/열람자 역할을 받습니다.
-  속하지 않은 프로젝트의 문서는 주소를 알아도 열리지 않습니다.
+  속하지 않은 프로젝트의 문서는 주소를 알아도 열리지 않습니다. 모든 프로젝트를 관리하는 관리자 키도 둘 수 있습니다.
 - **개인 접근 키** — 사람마다 다른 키로 로그인합니다. 키를 회수하면 그 키의 모든 세션이 바로 끊깁니다.
 
 ## 격리
@@ -70,7 +70,8 @@ pnpm key create --remote --name <이름> --project default --role EDITOR
 | --- | --- |
 | `pnpm db:migrate:remote` → `pnpm deploy:prod` → `pnpm check:headers` | 업데이트 배포와 점검. 새 마이그레이션이 있으면 반드시 먼저 |
 | `pnpm key create --remote --name <이름> --project <slug> --role EDITOR\|VIEWER` | 키 발급. 키 원문은 이때 한 번만 보입니다 |
-| `pnpm key list --remote` / `revoke <prefix> --remote` | 키 목록(속한 프로젝트와 역할)·회수 |
+| `pnpm key list --remote` / `revoke <prefix> --remote` | 키 목록(관리자 여부, 속한 프로젝트와 역할)·회수 |
+| `pnpm key create --remote --name <이름> --admin` / `pnpm key admin <prefix> on\|off --remote` | **관리자 키**: 멤버십 없이 모든 프로젝트(새로 만든 것 포함)의 문서를 관리합니다. 키·프로젝트 관리는 관리자도 CLI로만 합니다. 꼭 필요한 사람에게만 주세요 |
 | `pnpm project create <slug> --name <이름> --remote` | 프로젝트 만들기 (예: `tamna --name 탐나`) |
 | `pnpm project grant <prefix> <slug> --role EDITOR\|VIEWER --remote` | 키를 프로젝트에 넣거나 역할 바꾸기. `revoke <prefix> <slug>`로 빼기 |
 | `pnpm project list` / `members <slug>` / `rename <slug> --name …` / `move <문서 키> <slug>` (`--remote`) | 프로젝트 목록·멤버·이름 바꾸기·문서 옮기기 |

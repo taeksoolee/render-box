@@ -1,0 +1,1 @@
+ALTER TABLE `access_keys` ADD `is_admin` integer DEFAULT 0 NOT NULL;

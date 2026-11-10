@@ -2,7 +2,7 @@ import { accessKeys, sessions, type Db } from "@render-box/db";
 import { randomBase62, sha256Hex } from "@render-box/shared";
 import { and, eq, lt } from "drizzle-orm";
 import { SESSION_TTL_MS, type Host } from "./cookies";
-import { loadMemberships, type Membership } from "./projects";
+import { loadAccess, type Membership } from "./projects";
 
 export type SessionUser = {
   sessionId: string;
@@ -10,6 +10,8 @@ export type SessionUser = {
   csrfToken: string | null;
   keyId: number;
   name: string;
+  // All-projects admin (D-38); `projects` then lists every project as EDITOR.
+  admin: boolean;
   projects: Membership[];
 };
 
@@ -62,7 +64,7 @@ export async function loadSession(
   const row = rows[0];
   if (!row || row.expiresAt <= now || row.revokedAt !== null) return null;
   const { expiresAt: _e, revokedAt: _r, ...user } = row;
-  return { ...user, projects: await loadMemberships(d1, user.keyId) };
+  return { ...user, ...(await loadAccess(d1, user.keyId)) };
 }
 
 export async function deleteSessionFamily(db: Db, familyId: string): Promise<void> {

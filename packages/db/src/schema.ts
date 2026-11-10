@@ -14,6 +14,9 @@ export const accessKeys = sqliteTable("access_keys", {
   name: text("name").notNull(),
   keyHash: text("key_hash").notNull().unique(),
   keyPrefix: text("key_prefix").notNull(),
+  // Manages every project's documents without memberships; set only by CLI
+  // (design.md 3.9, D-38).
+  isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
   revokedAt: integer("revoked_at"),
   lastUsedAt: integer("last_used_at"),
   createdAt: integer("created_at").notNull(),

@@ -8,6 +8,7 @@ const VALUE_OPTIONS = new Set(["--name", "--role", "--project"]);
 
 export const remote = args.includes("--remote");
 export const positional = args.filter((a, i) => !a.startsWith("--") && !VALUE_OPTIONS.has(args[i - 1] ?? ""));
+export const flag = (name: string) => args.includes(`--${name}`);
 export const option = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;

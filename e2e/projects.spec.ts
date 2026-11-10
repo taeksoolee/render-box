@@ -135,4 +135,33 @@ test.describe("projects", () => {
     await page.goto(`${RENDER}/${doc.document_key}`);
     await expect(page.locator("#v")).toHaveText("옮길 문서");
   });
+
+  test("an admin key manages every project's documents, including new projects", async ({ page, request }) => {
+    const admin = /rb_[0-9A-Za-z]{32}/.exec(cli("key", "create", "--name", `admin-${run}`, "--admin"))![0];
+    const later = `e2e-later-${run}`;
+    cli("project", "create", later, "--name", `나중 프로젝트 ${run}`);
+    const theirs = await (await upload(outsider, "남이 만든 문서")).json();
+
+    // Not a member anywhere, yet it reads and edits OTHER's document...
+    const auth = { Authorization: `Bearer ${admin}` };
+    expect((await request.get(`${API}/html/${theirs.document_key}`, { headers: auth })).status()).toBe(200);
+    const patched = await request.patch(`${API}/html/${theirs.document_key}`, { headers: auth, data: { title: "관리자가 고침" } });
+    expect(patched.status()).toBe(200);
+    // ...and uploads into a project created after it was made admin.
+    expect((await upload(admin, "새 프로젝트에 올림", later)).status).toBe(201);
+
+    await loginWith(page, admin);
+    await page.goto(`${APP}/html?project=${OTHER}`);
+    await expect(page.locator("header [data-project]")).toContainText("관리자");
+    await page.goto(`${APP}/html/${theirs.document_key}`);
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "삭제", exact: true }).first().click();
+    await expect(page.getByText("문서를 삭제했습니다.")).toBeVisible();
+
+    // Turning admin off applies to the next request.
+    cli("key", "admin", admin.slice(0, 8), "off");
+    expect((await request.get(`${API}/html?project=${OTHER}`, { headers: auth })).status()).toBe(404);
+    await page.goto(`${APP}/html`);
+    await expect(page.getByText("속한 프로젝트가 없습니다")).toBeVisible();
+  });
 });

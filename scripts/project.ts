@@ -74,6 +74,8 @@ switch (command) {
          WHERE kp.project_id = ${project.id} ORDER BY k.name`,
       ),
     );
+    const admins = d1("SELECT COUNT(*) AS n FROM access_keys WHERE is_admin = 1 AND revoked_at IS NULL")[0]?.n;
+    if (admins) console.log(`이 밖에 관리자 키 ${admins}개가 모든 프로젝트에 접근합니다 (pnpm key list).`);
     break;
   }
   case "move": {

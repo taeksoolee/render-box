@@ -50,7 +50,9 @@ function ProjectMenu({ user, project }: { user: SessionUser; project: Membership
   const label = (
     <>
       <span class="max-w-40 truncate font-medium text-fg">{project.name}</span>
-      <span class={project.role === "EDITOR" ? ui.badgePrimary : ui.badgeNeutral}>{ROLE_LABEL[project.role]}</span>
+      <span class={project.role === "EDITOR" ? ui.badgePrimary : ui.badgeNeutral}>
+        {user.admin ? "관리자" : ROLE_LABEL[project.role]}
+      </span>
     </>
   );
   if (others.length === 0) return <span class="flex items-center gap-2 text-sm" data-project={project.slug}>{label}</span>;
@@ -65,7 +67,7 @@ function ProjectMenu({ user, project }: { user: SessionUser; project: Membership
           <li>
             <a href={`/html?project=${encodeURIComponent(p.slug)}`} class="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-canvas">
               <span class="truncate">{p.name}</span>
-              <span class="text-xs text-fg-subtle">{ROLE_LABEL[p.role]}</span>
+              <span class="text-xs text-fg-subtle">{user.admin ? "관리자" : ROLE_LABEL[p.role]}</span>
             </a>
           </li>
         ))}
