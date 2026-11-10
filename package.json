@@ -16,6 +16,7 @@
     "deploy:prod": "tsx scripts/deploy.ts deploy",
     "check:headers": "tsx scripts/check-headers.ts",
     "check:prod-mode": "pnpm --filter @render-box/admin build:assets && tsx scripts/check-prod-mode.ts",
+    "measure": "tsx scripts/measure.ts",
     "key": "tsx scripts/key.ts",
     "project": "tsx scripts/project.ts",
     "setup:local": "tsx scripts/setup-local.ts && pnpm db:migrate:local",
