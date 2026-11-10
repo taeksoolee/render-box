@@ -120,10 +120,11 @@ render-box/
 
 | 명령 | 설명 |
 | --- | --- |
-| `pnpm key create --name <이름> --role EDITOR\|VIEWER` | 키를 발급하고 원문을 1회 출력 |
-| `pnpm key list` | 이름, 역할, prefix, 마지막 사용일, 회수 여부 |
+| `pnpm key create --name <이름> [--project <slug> --role EDITOR\|VIEWER]` | 키를 발급하고 원문을 1회 출력. 프로젝트를 주면 바로 그 역할로 넣는다 |
+| `pnpm key list` | 이름, prefix, 속한 프로젝트와 역할, 마지막 사용일, 회수 여부 |
 | `pnpm key revoke <prefix>` | 회수하고 해당 키의 모든 세션 삭제 |
-| `pnpm key set-role <prefix> EDITOR\|VIEWER` | 역할 변경 (다음 요청부터 즉시 반영) |
+
+역할은 키가 아니라 프로젝트 멤버십에 붙는다 (3.9). 역할 변경은 `pnpm project grant`로 한다.
 
 ## 3.2 로그인 (관리 호스트)
 
@@ -251,8 +252,45 @@ HTMX 요청 중 세션이 만료되면 `next`에는 요청 경로 대신 `HX-Cur
 
 ## 3.8 권한 검사
 
-- 권한표는 [prd.md](prd.md) 3.3을 따르고, 라우트별 권한은 7.1 표를 기준으로 한다.
+- 권한표는 [prd.md](prd.md) 3.3을 따르고, 라우트별 권한은 7.1 표를 기준으로 한다. 표의 역할은 **문서가 속한 프로젝트에서의 역할**이다 (3.9).
 - 검사는 라우트 단위로 서버에서 한다. 화면에서 버튼을 숨기는 것은 편의 기능일 뿐 통제 수단이 아니다.
+
+## 3.9 프로젝트
+
+문서는 프로젝트(예: `tamna`) 하나에 속하고, 키는 프로젝트마다 역할을 받는다 ([decisions.md](decisions.md) D-37).
+
+- **멤버십:** `key_projects(key_id, project_id, role)`. 키 하나가 여러 프로젝트에 속할 수 있고, 프로젝트마다 EDITOR나 VIEWER다. 멤버십이 없는 프로젝트의 문서는 **없는 문서처럼** 404로 응답한다. 문서가 있는지조차 알리지 않기 위해서다. 멤버이지만 VIEWER인데 쓰기를 하면 403이다.
+- **어디서 검사하나:** 문서를 다루는 모든 곳에서 문서의 `project_id`로 멤버십을 확인한다.
+  - 렌더링 호스트: `/{key}`, `/{key}/v/{seq}`. 로그인만 확인하던 것을 멤버십까지 확인한다. 주소를 알아도 다른 프로젝트 문서는 열리지 않는다.
+  - 관리 호스트: 상세, 소스, 다운로드, 수정, 삭제, 버전 보기·복원·삭제, 등록(고른 프로젝트에서 EDITOR여야 한다)
+  - API: 목록·조회는 멤버인 프로젝트만, 올리기·수정은 EDITOR인 프로젝트만
+- 멤버십은 세션에 저장하지 않고 요청마다 읽는다. 권한을 빼면 다음 요청부터 바로 반영된다.
+- **업로드(`PUT /uploads`):** 원본은 아직 프로젝트가 없다. 어느 프로젝트에서든 EDITOR면 올릴 수 있고, 문서에 붙일 때 그 프로젝트의 EDITOR인지 확인한다.
+- **전체 관리자 키는 없다.** 프로젝트·멤버십 관리는 운영자가 CLI로 한다.
+- **격리 수준:** 같은 D1을 쓰고 코드에서 검사하는 논리적 분리다. 팀 사이에 데이터가 절대 섞이면 안 된다면 프로젝트가 아니라 배포를 따로 한다 (`pnpm setup:remote`).
+
+**화면**
+
+- 목록·등록·저장 공간은 "지금 프로젝트"를 기준으로 한다. `?project=<slug>`로 정하고, 마지막으로 본 프로젝트를 쿠키(`rb_project`, 1년, HttpOnly)에 기억한다. 둘 다 없으면 이름순 첫 프로젝트다.
+- 상단 바에 지금 프로젝트 이름과 그 프로젝트에서의 역할을 보여 준다. 프로젝트가 둘 이상이면 이름을 눌러 바꾼다(`<details>` 메뉴, JS 없이 동작).
+- 상세·수정은 문서의 프로젝트를 지금 프로젝트로 보여 준다. "← 목록"은 그 프로젝트 목록으로 간다.
+- 속한 프로젝트가 없는 키는 로그인은 되지만 목록에 "속한 프로젝트가 없습니다. 운영자에게 요청하세요"만 보인다.
+
+**저장 공간:** 상한은 전체 하나다 (4.9). `/storage`는 전체 사용량과 함께 내가 속한 프로젝트별 사용량을 보여 주고, 이전 버전 목록은 내가 속한 프로젝트 것만, 지우기는 내가 EDITOR인 프로젝트 것만 된다. 프로젝트별 사용량 = 그 프로젝트의 문서와 버전이 가리키는 원본 크기의 합(원본은 한 번만 센다).
+
+**CLI (`scripts/project.ts`)**
+
+| 명령 | 설명 |
+| --- | --- |
+| `pnpm project create <slug> --name <이름>` | 만들기. slug는 소문자·숫자·`-` 2~32자, 바꾸지 않는다 |
+| `pnpm project list` | slug, 이름, 멤버 수, 문서 수 |
+| `pnpm project rename <slug> --name <이름>` | 화면 이름 바꾸기 |
+| `pnpm project grant <키 prefix> <slug> --role EDITOR\|VIEWER` | 멤버로 넣거나 역할을 바꾼다 |
+| `pnpm project revoke <키 prefix> <slug>` | 멤버에서 뺀다 |
+| `pnpm project members <slug>` | 멤버와 역할 |
+| `pnpm project move <문서 키> <slug>` | 문서(모든 버전 포함)를 다른 프로젝트로 옮긴다. 렌더링 URL은 그대로다 |
+
+모두 `--remote`를 붙이면 운영 D1에 실행한다. 프로젝트 삭제는 없다. 문서가 남은 프로젝트를 지우는 실수를 막으려는 것이다.
 
 ---
 
@@ -650,7 +688,27 @@ PK: `(blob_id, seq)`
 - 현재 버전은 `document_id`별 가장 큰 `seq`다. `html_documents.blob_id`는 렌더링을 빠르게 하려고 현재 버전의 원본을 그대로 들고 있다.
 - 마이그레이션할 때 기존 문서마다 현재 HTML을 버전 1로 넣는다.
 
-## 6.7 마이그레이션
+## 6.7 projects, key_projects
+
+| projects | 타입 | 설명 |
+| --- | --- | --- |
+| id | INTEGER PK | |
+| slug | TEXT UNIQUE NOT NULL | CLI·API·URL용 이름 (`tamna`) |
+| name | TEXT NOT NULL | 화면 이름 (`탐나`) |
+| created_at | INTEGER NOT NULL | |
+
+| key_projects | 타입 | 설명 |
+| --- | --- | --- |
+| key_id | INTEGER NOT NULL | access_keys.id |
+| project_id | INTEGER NOT NULL | projects.id |
+| role | TEXT NOT NULL | `EDITOR` / `VIEWER` |
+| created_at | INTEGER NOT NULL | |
+
+- PK `(key_id, project_id)`, 인덱스 `project_id`
+- `html_documents.project_id INTEGER NOT NULL` (인덱스). SQLite는 외래 키가 붙은 NOT NULL 열을 `ALTER TABLE`로 더할 수 없어서, 이 열에는 외래 키 제약을 걸지 않고 코드에서 지킨다.
+- `access_keys.role`은 없앤다. 마이그레이션 0002가 `default`("기본") 프로젝트를 만들고, 기존 문서를 모두 그 프로젝트로, 기존 키를 모두 원래 역할로 그 프로젝트에 넣는다.
+
+## 6.8 마이그레이션
 
 - 스키마는 `packages/db`의 Drizzle 정의로 관리하고, `drizzle-kit generate`로 SQL 마이그레이션을 만든다.
 - 적용은 `wrangler d1 migrations apply`로 한다. 로컬은 `--local`, 운영은 `--remote`.
