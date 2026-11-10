@@ -77,7 +77,7 @@ render-box/
 | 런타임 | Cloudflare Workers | 로컬은 `wrangler dev` |
 | 로컬 도구 | Node.js 24 LTS, pnpm | `.nvmrc`와 `engines`로 고정 |
 | 웹 | Hono | 앱마다 별도 인스턴스 |
-| UI | Hono JSX (SSR) + HTMX 2.x | HTMX는 목록 검색·페이지네이션에만 사용 |
+| UI | Hono JSX (SSR) + HTMX 2.x | 목록 검색·페이지네이션, 페이지 이동(hx-boost) (8.1) |
 | CSS | Tailwind CSS | 빌드 시 정적 CSS 생성 |
 | DB | Cloudflare D1 (SQLite) | HTML 원본도 청크로 저장 |
 | ORM | Drizzle ORM (D1 드라이버) | |
@@ -847,8 +847,12 @@ Strict-Transport-Security: max-age=31536000
 ## 8.1 HTMX
 
 - 2.x 버전을 정적 파일로 자체 호스팅한다.
-- **목록 검색과 페이지네이션에만** 쓴다. 등록·수정·삭제는 일반 폼과 PRG로 처리한다 ([decisions.md](decisions.md) D-12).
-- 설정: `<meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"selfRequestsOnly":true}'>`
+- 목록 검색과 페이지네이션, 그리고 **페이지 이동(hx-boost)**에 쓴다. 등록·수정·삭제의 서버 처리는 일반 폼과 PRG 그대로다 ([decisions.md](decisions.md) D-12, D-39).
+- 설정 (`layout.tsx`): `allowEval: false`, `includeIndicatorStyles: false`, `selfRequestsOnly: true`, `historyCacheSize: 0` + `refreshOnHistoryMiss: true`(문서·CSRF 토큰을 localStorage에 남기지 않고 뒤로 가기는 새로 불러옴), `responseHandling`으로 4xx·5xx도 화면에 반영
+- **boost 범위:** `<body>` 안 `[data-boost-root]` 래퍼에 `hx-boost`를 둔다. 본문만 바뀌고 `<body>`는 남으므로 페이지마다 래퍼 값으로 켜고 끈다. 로그인·업로드 폼은 `false`, 업로드 폼·다운로드로 가는 링크도 `hx-boost="false"`.
+- **목록 조각과 구분:** boost된 이동도 `HX-Request`를 보낸다. 목록 조각은 `HX-Request`이면서 `HX-Boosted`가 아닐 때만 준다.
+- **app.js:** 초기화는 다시 실행해도 같도록(요소마다 표시) 하고, boost 뒤(`htmx:afterSettle`, `detail.boosted`)에 다시 돌린다. 처음 불러온 기록 항목에 `{htmx: true}`를 넣어 뒤로 가기가 새로 불러오게 한다.
+- **프리페치:** D-39. 링크 영역(행 링크는 `[data-prefetch-area]`)에서 32px 안에 80ms 머물면 받는다. `[data-no-prefetch]`(프로젝트 메뉴)는 제외.
 - 검색 입력: `hx-get="/html" hx-trigger="input changed delay:300ms" hx-target="#list" hx-push-url="true" hx-sync="this:replace"`
 
 ## 8.2 JavaScript
@@ -908,6 +912,8 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
   - 쿠키 이름의 `__Host-` 접두사와 `Secure` 속성을 생략한다.
   - HSTS를 끈다.
 - `pnpm build:css`로 Tailwind CSS를 빌드한다. `pnpm dev`는 감시 모드로 함께 실행한다.
+
+**속도 (D-39):** 세 Worker 모두 Smart Placement(`[placement] mode = "smart"`)로 D1 가까이에서 실행한다. 관리 화면 정적 파일은 내용 해시 이름(`/static/h/…`, 1년 `immutable`)으로 내보내고, 페이지는 `manifest.json`으로 그 이름을 찾는다(Worker마다 한 번 읽음, 없으면 원래 이름).
 
 ## 9.3 배포 (로컬 검증 후)
 

@@ -4,6 +4,11 @@ compatibility_date = "2026-10-01"
 workers_dev = true
 preview_urls = false
 
+# Run near the D1 database instead of where the request lands: a page makes
+# several D1 round trips, and requests from Korea often land in the US.
+[placement]
+mode = "smart"
+
 [dev]
 port = 8788
 inspector_port = 9231

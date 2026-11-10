@@ -31,6 +31,13 @@
     return input ? input.value : "";
   }
 
+  // Runs again after every hx-boost swap, so each binder marks what it bound.
+  function once(el, key) {
+    if (el.dataset["rb" + key]) return false;
+    el.dataset["rb" + key] = "1";
+    return true;
+  }
+
   // ---------------------------------------------------------- generic
 
   function initFocus() {
@@ -40,6 +47,7 @@
 
   function initSubmitOnce() {
     $$("form[data-submit-once]").forEach(function (form) {
+      if (!once(form, "SubmitOnce")) return;
       form.addEventListener("submit", function () {
         var btn = form.querySelector('button[type="submit"]');
         if (!btn) return;
@@ -49,21 +57,30 @@
     });
   }
 
+  // One capturing listener on the document: it runs before htmx's own submit
+  // listener on a boosted form, so cancelling also stops the htmx request.
   function initConfirm() {
-    $$("form[data-confirm]").forEach(function (form) {
-      form.addEventListener("submit", function (e) {
+    if (!once(document.documentElement, "Confirm")) return;
+    document.addEventListener(
+      "submit",
+      function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement) || !form.dataset.confirm) return;
         if (!window.confirm(form.dataset.confirm)) {
           e.preventDefault();
+          e.stopImmediatePropagation();
           return;
         }
         var btn = form.querySelector('button[type="submit"]');
         if (btn) btn.disabled = true;
-      });
-    });
+      },
+      true,
+    );
   }
 
   function initCopy() {
     $$("[data-copy]").forEach(function (btn) {
+      if (!once(btn, "Copy")) return;
       btn.addEventListener("click", function () {
         var value = btn.dataset.copy;
         var done = function () {
@@ -658,12 +675,207 @@
     renumber();
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
-    initFocus();
+  // ---------------------------------------------------------- navigation
+
+  function initPage() {
     initSubmitOnce();
     initConfirm();
     initCopy();
     initCleanUrl();
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    // Mark the fully loaded entry as htmx's: otherwise Back to it after a
+    // boosted swap would change only the URL and keep the swapped page. htmx
+    // then finds no cached copy (historyCacheSize 0) and reloads it.
+    if (!(history.state && history.state.htmx)) history.replaceState({ htmx: true }, "", location.href);
+    initFocus();
+    initPage();
     initDocumentForm();
   });
+
+  // After a boosted page swap (hx-boost, or a prefetched page), bind the new
+  // content and move focus to it so screen readers land on the new page.
+  function afterPageSwap() {
+    initPage();
+    var target = $('[data-autofocus="true"]') || $("#main");
+    if (target) target.focus({ preventScroll: true });
+    announce(document.title.replace(/ · render-box$/, "") + " 화면");
+  }
+  document.addEventListener("htmx:afterSettle", function (e) {
+    if (e.detail && e.detail.boosted) afterPageSwap();
+    else initPage(); // search and paging swap #list only
+  });
+
+  // ---------------------------------------------------------- prefetch
+
+  // Fetches a boosted link's page as soon as the pointer is near it, so the
+  // click shows it at once. "Near" is the link's click area (or the whole row
+  // for row links, [data-prefetch-area]) grown by PREFETCH_MARGIN, held for
+  // PREFETCH_DWELL so passing over a list does not fetch every row. Keyboard
+  // focus, touch and mousedown fetch right away. Pages are no-store, so the
+  // browser cache cannot hold them; this keeps them in memory for a short
+  // while and swaps them in itself.
+  var PREFETCH_MARGIN = 32;
+  var PREFETCH_DWELL = 80;
+  var PREFETCH_TTL = 20000;
+  var PREFETCH_MAX_INFLIGHT = 2;
+  var prefetched = {}; // url -> { at, promise, page }
+  var inflight = 0;
+
+  function prefetchable(a) {
+    if (!(a instanceof HTMLAnchorElement) || !a.href) return false;
+    if (a.target && a.target !== "_self") return false;
+    if (a.hasAttribute("download") || a.closest("[data-no-prefetch]")) return false;
+    var boost = a.closest("[hx-boost]");
+    if (!boost || boost.getAttribute("hx-boost") !== "true") return false;
+    var url = new URL(a.href, location.href);
+    if (url.origin !== location.origin) return false;
+    if (url.pathname === location.pathname && url.search === location.search) return false;
+    return !/\/(download|source)$/.test(url.pathname);
+  }
+
+  function keyOf(a) {
+    return a.href.split("#")[0];
+  }
+
+  function prefetch(a) {
+    var url = keyOf(a);
+    var hit = prefetched[url];
+    if (hit && Date.now() - hit.at < PREFETCH_TTL) return;
+    if (inflight >= PREFETCH_MAX_INFLIGHT) return;
+    inflight++;
+    var entry = { at: Date.now(), page: null, promise: null };
+    entry.promise = fetch(url, {
+      credentials: "same-origin",
+      headers: { "HX-Request": "true", "HX-Boosted": "true", "HX-Current-URL": location.href },
+    })
+      .then(function (res) {
+        var type = res.headers.get("Content-Type") || "";
+        // Errors, redirects to login and non-pages go through a normal request.
+        if (!res.ok || type.indexOf("text/html") !== 0 || new URL(res.url).pathname === "/login") throw new Error("skip");
+        return res.text().then(function (html) {
+          entry.page = { html: html, url: res.url };
+          return entry.page;
+        });
+      })
+      .finally(function () {
+        inflight--;
+      });
+    entry.promise.catch(function () {
+      if (prefetched[url] === entry) delete prefetched[url];
+    });
+    prefetched[url] = entry;
+  }
+
+  // The same steps htmx takes for a boosted link: push the URL, swap the body,
+  // set the title, scroll to the top. Back reloads (no history cache).
+  function showPrefetched(page) {
+    var doc = new DOMParser().parseFromString(page.html, "text/html");
+    var root = doc.querySelector("[data-boost-root]");
+    if (!root || root.getAttribute("hx-boost") !== "true" || !window.htmx) {
+      location.assign(page.url);
+      return;
+    }
+    var u = new URL(page.url);
+    history.pushState({ htmx: true }, "", u.pathname + u.search + u.hash);
+    document.title = doc.title;
+    window.htmx.swap(document.body, doc.body.innerHTML, { swapStyle: "innerHTML" });
+    window.scrollTo(0, 0);
+    prefetched = {};
+    afterPageSwap();
+  }
+
+  document.addEventListener(
+    "click",
+    function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target instanceof Element ? e.target.closest("a") : null;
+      if (!a || !prefetchable(a)) return;
+      if (a.dataset.rbSkipPrefetch) {
+        delete a.dataset.rbSkipPrefetch; // replayed click: let htmx take it
+        return;
+      }
+      var hit = prefetched[keyOf(a)];
+      if (!hit || Date.now() - hit.at > PREFETCH_TTL) return; // htmx fetches it
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var hash = new URL(a.href).hash;
+      hit.promise.then(
+        function (page) {
+          showPrefetched({ html: page.html, url: page.url.split("#")[0] + hash });
+        },
+        function () {
+          // Not usable (error page, login redirect): replay the click so htmx
+          // makes the normal boosted request and handles the response.
+          a.dataset.rbSkipPrefetch = "1";
+          a.click();
+        },
+      );
+    },
+    true,
+  );
+
+  // Anything that changed data makes the prefetched pages stale.
+  document.addEventListener("htmx:afterRequest", function (e) {
+    var verb = e.detail && e.detail.requestConfig && e.detail.requestConfig.verb;
+    if (verb && verb !== "get") prefetched = {};
+  });
+  document.addEventListener("submit", function () {
+    prefetched = {};
+  });
+
+  function areaOf(a) {
+    return (a.closest("[data-prefetch-area]") || a).getBoundingClientRect();
+  }
+
+  function nearestLink(x, y) {
+    var best = null;
+    var bestDistance = Infinity;
+    $$("a[href]").forEach(function (a) {
+      if (!prefetchable(a)) return;
+      var r = areaOf(a);
+      if (!r.width && !r.height) return;
+      var dx = Math.max(r.left - x, 0, x - r.right);
+      var dy = Math.max(r.top - y, 0, y - r.bottom);
+      if (dx > PREFETCH_MARGIN || dy > PREFETCH_MARGIN) return;
+      var distance = dx * dx + dy * dy;
+      if (distance < bestDistance) {
+        best = a;
+        bestDistance = distance;
+      }
+    });
+    return best;
+  }
+
+  var dwellLink = null;
+  var dwellTimer = null;
+  var lastMove = 0;
+  document.addEventListener(
+    "pointermove",
+    function (e) {
+      if (e.pointerType !== "mouse") return;
+      var now = Date.now();
+      if (now - lastMove < 40) return;
+      lastMove = now;
+      var link = nearestLink(e.clientX, e.clientY);
+      if (link === dwellLink) return;
+      clearTimeout(dwellTimer);
+      dwellLink = link;
+      if (link) {
+        dwellTimer = setTimeout(function () {
+          prefetch(link);
+        }, PREFETCH_DWELL);
+      }
+    },
+    { passive: true },
+  );
+
+  function prefetchTarget(e) {
+    var a = e.target instanceof Element ? e.target.closest("a") : null;
+    if (a && prefetchable(a)) prefetch(a);
+  }
+  document.addEventListener("focusin", prefetchTarget);
+  document.addEventListener("touchstart", prefetchTarget, { passive: true });
+  document.addEventListener("mousedown", prefetchTarget);
 })();

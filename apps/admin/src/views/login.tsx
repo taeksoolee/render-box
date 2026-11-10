@@ -1,14 +1,16 @@
 import { Alert, Document, HelpLink } from "./layout";
+import { asset } from "./assets";
 import { Icon } from "./icon";
 import * as ui from "./ui";
 
 export function LoginPage({ next, error }: { next: string | null; error?: string }) {
   const showDocHint = next?.startsWith("/auth/render") ?? false;
   return (
-    <Document title="로그인">
+    // Not boosted: login redirects through the render host (another origin).
+    <Document title="로그인" boost={false}>
       <main id="main" class="grid min-h-dvh place-items-center px-4 py-8">
         <div class={`${ui.card} w-full max-w-sm`}>
-          <img src="/static/logo.svg" alt="" width="48" height="48" class="mx-auto size-12" />
+          <img src={asset("logo.svg")} alt="" width="48" height="48" class="mx-auto size-12" />
           <h1 class="mt-3 text-center text-2xl font-semibold">render-box</h1>
           <p class="mt-1 text-center text-fg-muted">HTML 파일을 주소 하나로 공유하는 곳</p>
 

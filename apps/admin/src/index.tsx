@@ -54,6 +54,7 @@ import { ERRORS, ErrorPage, type ErrorKind } from "./views/error";
 import { DocumentFormPage, type FormMode, type KeptUpload } from "./views/form";
 import { ListCount, ListPage, ListRegion, type ListData } from "./views/list";
 import { LoginPage } from "./views/login";
+import { loadManifest } from "./views/assets";
 import { setHelpUrl } from "./views/links";
 import { StoragePage } from "./views/storage";
 
@@ -68,6 +69,8 @@ const app = new Hono<AppEnv>();
 app.use("*", adminSecurityHeaders());
 app.use("*", async (c, next) => {
   setHelpUrl(c.env.HELP_URL);
+  // Hashed static URLs in production only; dev keeps the plain paths.
+  if (!isDev(c.env)) await loadManifest(c.env.ASSETS, c.env.APP_ORIGIN);
   await next();
 });
 app.use("*", canonicalOrigin((env: AppEnv["Bindings"]) => env.APP_ORIGIN));
@@ -248,12 +251,14 @@ app.get("/html", requireLogin, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
   const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
   const project = currentProject(c);
-  const { rows, total } = await listDocuments(c.env.DB, {
-    q,
-    page,
-    pageSize: PAGE_SIZE,
-    projectIds: project ? [project.projectId] : [],
-  });
+  // Search and paging swap only the list; boosted navigation (hx-boost) also
+  // sends HX-Request but needs the whole page.
+  const htmx = c.req.header("HX-Request") === "true" && c.req.header("HX-Boosted") !== "true";
+  // The list and the storage summary in parallel; HTMX swaps need only the list.
+  const [{ rows, total }, storage] = await Promise.all([
+    listDocuments(c.env.DB, { q, page, pageSize: PAGE_SIZE, projectIds: project ? [project.projectId] : [] }),
+    htmx ? null : storageUsage(c.env.DB, storageLimits(c.env)),
+  ]);
 
   const data: ListData = {
     rows,
@@ -265,7 +270,7 @@ app.get("/html", requireLogin, async (c) => {
     project,
   };
   const user = c.get("user")!;
-  if (c.req.header("HX-Request") === "true") {
+  if (!storage) {
     return c.html(
       <>
         <ListRegion data={data} user={user} />
@@ -273,7 +278,6 @@ app.get("/html", requireLogin, async (c) => {
       </>,
     );
   }
-  const storage = await storageUsage(c.env.DB, storageLimits(c.env));
   return c.html(<ListPage data={data} user={user} storage={storage} deleted={c.req.query("deleted") === "1"} />);
 });
 

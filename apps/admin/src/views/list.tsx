@@ -86,7 +86,7 @@ function Empty({ data }: { data: ListData }) {
       <Icon name="upload" class="mx-auto size-8 text-fg-subtle" />
       <p class="mt-3 text-base font-semibold">아직 등록한 HTML이 없습니다</p>
       <p class="mt-1 text-fg-muted break-keep">파일을 올리면 팀원이 열어 볼 수 있는 주소가 만들어집니다.</p>
-      <a href="/html/new" class={`${ui.primary} mt-4`}>
+      <a href="/html/new" hx-boost="false" class={`${ui.primary} mt-4`}>
         <Icon name="plus" />새 HTML 등록
       </a>
       {helpSection("ai-도구로-올리기") ? (
@@ -163,7 +163,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
               </thead>
               <tbody>
                 {data.rows.map((row) => (
-                  <tr class={ui.tr}>
+                  <tr class={ui.tr} data-prefetch-area>
                     <td class={`${ui.td} max-w-0 w-full`}>
                       <a href={`/html/${row.documentKey}`} class={ui.rowTitle}>
                         {row.title}
@@ -186,7 +186,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
           </div>
           <ul class="space-y-2 md:hidden">
             {data.rows.map((row) => (
-              <li class="relative rounded-lg border border-line bg-surface p-4">
+              <li class="relative rounded-lg border border-line bg-surface p-4" data-prefetch-area>
                 <div class="flex items-start justify-between gap-2">
                   <a href={`/html/${row.documentKey}`} class={ui.rowTitle}>
                     {row.title}
@@ -236,7 +236,7 @@ export function ListPage({
         <div class="flex items-center justify-between gap-2">
           <h1 class="text-xl font-semibold">{data.project ? data.project.name : "문서"}</h1>
           {data.project?.role === "EDITOR" ? (
-            <a href={`/html/new?project=${encodeURIComponent(data.project!.slug)}`} class={ui.primary}>
+            <a href={`/html/new?project=${encodeURIComponent(data.project!.slug)}`} hx-boost="false" class={ui.primary}>
               <Icon name="plus" />새 HTML 등록
             </a>
           ) : null}

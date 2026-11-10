@@ -11,3 +11,5 @@ test-results/
 playwright-report/
 render-box.deploy.json
 apps/*/wrangler.deploy.toml
+apps/admin/public/static/h/
+apps/admin/public/static/manifest.json

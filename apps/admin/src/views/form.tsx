@@ -306,7 +306,9 @@ export function DocumentFormPage({
   ].filter(Boolean) as { href: string; text: string }[];
 
   return (
-    <AppPage title={edit ? `문서 수정 · ${mode.title}` : "새 HTML 등록"} user={user} project={project}>
+    // Not boosted: the upload code binds window-level drag/drop listeners that
+    // a body swap would leave behind (a full load on the way in and out).
+    <AppPage title={edit ? `문서 수정 · ${mode.title}` : "새 HTML 등록"} user={user} project={project} boost={false}>
       <div class="space-y-6">
         <BackLink href={edit ? `/html/${mode.documentKey}` : `/html?project=${encodeURIComponent(project.slug)}`}>
           {edit ? mode.title : `${project.name} 목록`}

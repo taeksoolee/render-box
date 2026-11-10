@@ -1,8 +1,8 @@
-import { accessKeys, sessions, type Db } from "@render-box/db";
+import { sessions, type Db } from "@render-box/db";
 import { randomBase62, sha256Hex } from "@render-box/shared";
 import { and, eq, lt } from "drizzle-orm";
 import { SESSION_TTL_MS, type Host } from "./cookies";
-import { loadAccess, type Membership } from "./projects";
+import { accessStatement, type Membership } from "./projects";
 
 export type SessionUser = {
   sessionId: string;
@@ -37,9 +37,9 @@ export async function createSession(
 
 // Expiry and revocation are checked on every read; expired rows are left for
 // deleteExpiredSessions to remove at the next login (no cron, design.md 3.3).
-// Memberships are read fresh each time (design.md 3.9).
+// Memberships are read fresh each time (design.md 3.9), in the same D1 round
+// trip as the session.
 export async function loadSession(
-  db: Db,
   d1: D1Database,
   token: string | undefined,
   host: Host,
@@ -47,24 +47,23 @@ export async function loadSession(
 ): Promise<SessionUser | null> {
   if (!token) return null;
   const id = await sha256Hex(token);
-  const rows = await db
-    .select({
-      sessionId: sessions.id,
-      familyId: sessions.familyId,
-      csrfToken: sessions.csrfToken,
-      expiresAt: sessions.expiresAt,
-      keyId: accessKeys.id,
-      name: accessKeys.name,
-      revokedAt: accessKeys.revokedAt,
-    })
-    .from(sessions)
-    .innerJoin(accessKeys, eq(sessions.keyId, accessKeys.id))
-    .where(and(eq(sessions.id, id), eq(sessions.host, host)))
-    .limit(1);
-  const row = rows[0];
+  const [session, access] = await d1.batch<Record<string, unknown>>([
+    d1
+      .prepare(
+        `SELECT s.id AS sessionId, s.family_id AS familyId, s.csrf_token AS csrfToken, s.expires_at AS expiresAt,
+                k.id AS keyId, k.name, k.revoked_at AS revokedAt, k.is_admin AS admin
+         FROM sessions s JOIN access_keys k ON k.id = s.key_id
+         WHERE s.id = ? AND s.host = ?`,
+      )
+      .bind(id, host),
+    accessStatement(d1, "s.id = ?", id),
+  ]);
+  const row = session?.results[0] as
+    | (Omit<SessionUser, "admin" | "projects"> & { expiresAt: number; revokedAt: number | null; admin: number })
+    | undefined;
   if (!row || row.expiresAt <= now || row.revokedAt !== null) return null;
-  const { expiresAt: _e, revokedAt: _r, ...user } = row;
-  return { ...user, ...(await loadAccess(d1, user.keyId)) };
+  const { expiresAt: _e, revokedAt: _r, admin, ...user } = row;
+  return { ...user, admin: admin === 1, projects: (access?.results ?? []) as Membership[] };
 }
 
 export async function deleteSessionFamily(db: Db, familyId: string): Promise<void> {

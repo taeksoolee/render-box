@@ -2,12 +2,31 @@ import type { Membership, SessionUser } from "@render-box/auth";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { Icon, type IconName } from "./icon";
+import { asset } from "./assets";
 import { getHelpUrl, SOURCE_URL } from "./links";
 import * as ui from "./ui";
 
 export const ROLE_LABEL = { EDITOR: "편집자", VIEWER: "열람자" } as const;
 
-export function Document({ title, children }: { title: string; children: Child }) {
+// hx-boost turns same-origin links and forms into body swaps (no full reload,
+// no flash). It sits on a wrapper, not <body>: a boosted swap replaces the
+// body's content but keeps the <body> element, so a page that must not be
+// boosted (login, the upload form) sets boost={false} on its own wrapper.
+// History is not cached in localStorage (pages hold CSRF tokens and documents);
+// Back reloads. Error pages are swapped in like any other page.
+const HTMX_CONFIG = JSON.stringify({
+  allowEval: false,
+  includeIndicatorStyles: false,
+  selfRequestsOnly: true,
+  historyCacheSize: 0,
+  refreshOnHistoryMiss: true,
+  responseHandling: [
+    { code: "204", swap: false },
+    { code: "...", swap: true },
+  ],
+});
+
+export function Document({ title, boost = true, children }: { title: string; boost?: boolean; children: Child }) {
   return (
     <>
       {raw("<!DOCTYPE html>")}
@@ -18,24 +37,26 @@ export function Document({ title, children }: { title: string; children: Child }
           <meta name="color-scheme" content="light" />
           <meta
             name="htmx-config"
-            content='{"allowEval":false,"includeIndicatorStyles":false,"selfRequestsOnly":true}'
+            content={HTMX_CONFIG}
           />
           <title>{title === "render-box" ? title : `${title} · render-box`}</title>
-          <link rel="icon" href="/static/logo.svg" type="image/svg+xml" />
-          <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
-          <link rel="stylesheet" href="/static/app.css" />
-          <script src="/static/js/htmx.min.js" defer></script>
-          <script src="/static/js/app.js" defer></script>
+          <link rel="icon" href={asset("logo.svg")} type="image/svg+xml" />
+          <link rel="apple-touch-icon" href={asset("apple-touch-icon.png")} />
+          <link rel="stylesheet" href={asset("app.css")} />
+          <script src={asset("js/htmx.min.js")} defer></script>
+          <script src={asset("js/app.js")} defer></script>
         </head>
         <body>
-          <a
-            href="#main"
-            class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-20 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2"
-          >
-            본문으로 건너뛰기
-          </a>
-          {children}
-          <Footer />
+          <div hx-boost={boost ? "true" : "false"} data-boost-root>
+            <a
+              href="#main"
+              class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-20 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2"
+            >
+              본문으로 건너뛰기
+            </a>
+            {children}
+            <Footer />
+          </div>
           <div id="live" class="sr-only" aria-live="polite"></div>
         </body>
       </html>
@@ -62,7 +83,8 @@ function ProjectMenu({ user, project }: { user: SessionUser; project: Membership
         {label}
         <Icon name="chevron-down" class="size-3.5" />
       </summary>
-      <ul class="absolute right-0 z-20 mt-1 min-w-48 rounded-md border border-line bg-surface py-1 shadow-sm">
+      {/* No prefetch: opening a project remembers it, which only a click should do. */}
+      <ul class="absolute right-0 z-20 mt-1 min-w-48 rounded-md border border-line bg-surface py-1 shadow-sm" data-no-prefetch>
         {others.map((p) => (
           <li>
             <a href={`/html?project=${encodeURIComponent(p.slug)}`} class="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-canvas">
@@ -81,7 +103,7 @@ export function TopBar({ user, project = null }: { user: SessionUser; project?: 
     <header class="sticky top-0 z-10 h-14 border-b border-line bg-surface">
       <div class="mx-auto flex h-full max-w-5xl items-center justify-between px-4 sm:px-6">
         <a href="/html" class="inline-flex items-center gap-2 font-semibold text-fg">
-          <img src="/static/logo.svg" alt="" width="24" height="24" class="size-6" />
+          <img src={asset("logo.svg")} alt="" width="24" height="24" class="size-6" />
           render-box
         </a>
         <div class="flex items-center gap-2">
@@ -105,18 +127,20 @@ export function AppPage({
   user,
   project = null,
   width = "max-w-3xl",
+  boost = true,
   children,
 }: {
   title: string;
   user: SessionUser;
   project?: Membership | null;
   width?: "max-w-3xl" | "max-w-5xl";
+  boost?: boolean;
   children: Child;
 }) {
   return (
-    <Document title={title}>
+    <Document title={title} boost={boost}>
       <TopBar user={user} project={project} />
-      <main id="main" class={`mx-auto ${width} px-4 py-6 sm:px-6 sm:py-8`}>
+      <main id="main" tabindex={-1} class={`mx-auto ${width} px-4 py-6 outline-none sm:px-6 sm:py-8`}>
         {children}
       </main>
     </Document>

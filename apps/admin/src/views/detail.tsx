@@ -128,7 +128,7 @@ export function DetailPage({
             <CopyButton value={url} cls={`${ui.secondary} w-full sm:w-auto`} label="렌더링 URL 복사" />
             {editor ? (
               <div class="hidden gap-2 sm:ml-auto sm:flex">
-                <a href={`/html/${doc.documentKey}/edit`} class={ui.secondary}>
+                <a href={`/html/${doc.documentKey}/edit`} hx-boost="false" class={ui.secondary}>
                   수정
                 </a>
                 <DeleteForm doc={doc} user={user} />
@@ -202,7 +202,7 @@ export function DetailPage({
               소스 보기
               <Icon name="external-link" />
             </a>
-            <a href={`/html/${doc.documentKey}/download`} class={ui.secondary}>
+            <a href={`/html/${doc.documentKey}/download`} hx-boost="false" class={ui.secondary}>
               소스 다운로드
             </a>
           </div>
@@ -212,7 +212,7 @@ export function DetailPage({
 
         {editor ? (
           <section class="flex gap-2 border-t border-line pt-6 sm:hidden">
-            <a href={`/html/${doc.documentKey}/edit`} class={`${ui.secondary} flex-1`}>
+            <a href={`/html/${doc.documentKey}/edit`} hx-boost="false" class={`${ui.secondary} flex-1`}>
               수정
             </a>
             <DeleteForm doc={doc} user={user} />

@@ -52,7 +52,7 @@ async function render(c: Context<{ Bindings: Env }>, seq: number | null) {
   if (!isDocumentKey(documentKey)) return c.text(NOT_FOUND, 404);
 
   const db = createDb(env.DB);
-  const user = await loadSession(db, env.DB, getCookie(c, sessionCookieName("RENDER", isDev(env))), "RENDER");
+  const user = await loadSession(env.DB, getCookie(c, sessionCookieName("RENDER", isDev(env))), "RENDER");
   if (!user) {
     const next = encodeURIComponent(seq === null ? `/${documentKey}` : `/${documentKey}/v/${seq}`);
     return c.redirect(`${env.APP_ORIGIN}/auth/render?next=${next}`, 302);
