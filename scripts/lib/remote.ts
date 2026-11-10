@@ -2,7 +2,7 @@
 // `pnpm setup:remote`). The committed apps/*/wrangler.toml hold placeholders;
 // from them and this file we generate apps/*/wrangler.deploy.toml (also
 // ignored), and every remote wrangler command runs with that config.
-import { execFileSync, type StdioOptions } from "node:child_process";
+import { execFileSync, spawnSync, type StdioOptions } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 export const ROOT = new URL("../../", import.meta.url);
@@ -81,22 +81,38 @@ export function writeWranglerConfigs(config: DeployConfig) {
   }
 }
 
+const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
 // Runs wrangler for one app against production. Returns stdout when captured.
+//
+// When the stored login token has expired, wrangler refreshes it and uses the
+// new token at once; Cloudflare can reject that first request with 7403
+// ("account is not valid or not authorized") until the token takes effect.
+// That request fails before doing anything, so one retry after a pause is safe.
 export function wrangler(
   app: App,
   args: string[],
   opts: { capture?: boolean; input?: string; accountId?: string } = {},
 ): string {
   const accountId = opts.accountId ?? (hasDeployConfig() ? readDeployConfig().accountId : undefined);
-  const stdio: StdioOptions = [opts.input !== undefined ? "pipe" : "inherit", opts.capture ? "pipe" : "inherit", "inherit"];
-  const out = execFileSync("pnpm", ["exec", "wrangler", ...args], {
-    cwd: appDir(app),
-    encoding: "utf8",
-    input: opts.input,
-    stdio,
-    env: { ...process.env, ...(accountId ? { CLOUDFLARE_ACCOUNT_ID: accountId } : {}) },
-  });
-  return out ?? "";
+  const stdio: StdioOptions = [opts.input !== undefined ? "pipe" : "inherit", opts.capture ? "pipe" : "inherit", "pipe"];
+  for (let attempt = 1; ; attempt++) {
+    const result = spawnSync("pnpm", ["exec", "wrangler", ...args], {
+      cwd: appDir(app),
+      encoding: "utf8",
+      input: opts.input,
+      stdio,
+      env: { ...process.env, ...(accountId ? { CLOUDFLARE_ACCOUNT_ID: accountId } : {}) },
+    });
+    if (result.stderr) process.stderr.write(result.stderr);
+    if (result.status === 0) return result.stdout ?? "";
+    if (attempt === 1 && /code: 7403/.test(result.stderr ?? "")) {
+      console.error("\n↻ Cloudflare가 방금 갱신한 로그인 토큰을 아직 받지 않았습니다. 5초 뒤 한 번 더 시도합니다.\n");
+      sleep(5000);
+      continue;
+    }
+    throw new Error(`wrangler ${args.join(" ")} 실패 (exit ${result.status ?? result.signal})`);
+  }
 }
 
 export const deployConfigArgs = ["--config", "wrangler.deploy.toml"];
