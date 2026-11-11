@@ -143,24 +143,28 @@ Tailwind 기본 스케일만 쓰고, 굵기는 400/500/600 세 가지만 쓴다.
 
 **상단 바:** `sticky top-0 z-10 h-14 border-b border-line bg-surface`
 
-- 왼쪽: 로고(`/static/logo.svg`, `size-6`, `alt=""`) + "render-box"(`font-semibold`, `/html`로 가는 링크)
+- 왼쪽: 로고(`/static/logo.svg`, `size-6`, `alt=""`) + "render-box"(`font-semibold`, `/html`로 가는 링크). `sm` 미만에서는 로고만(링크 `aria-label="render-box 목록"`).
+- **모바일(`sm` 미만):** 프로젝트 이름은 `max-w-24`로 줄여 말줄임, [도움말]은 `circle-help` 아이콘(`aria-label`), 버튼 좌우 여백 `px-2`. 사용자 이름은 `md`부터 보인다.
 - 오른쪽: 지금 프로젝트, 사용자 이름, [도움말], [로그아웃]
   - **지금 프로젝트:** 프로젝트 이름(`font-medium`, `max-w-40 truncate`) + **그 프로젝트에서의** 역할 배지(편집자/열람자). 역할은 키가 아니라 프로젝트마다 다르다 (design.md 3.9). 관리자 키(D-38)는 모든 프로젝트에서 badge-primary "관리자"로, 메뉴의 프로젝트 목록에도 "관리자"로 보인다.
   - 프로젝트가 둘 이상이면 `<details>` 메뉴가 된다. `<summary>`는 ghost 버튼 모양에 `chevron-down` 아이콘, 열면 다른 프로젝트 목록(이름 + 역할, `/html?project=<slug>` 링크)이 오른쪽 정렬로 뜬다. JS 없이 동작한다.
   - 지금 프로젝트가 없는 화면(오류 페이지)에서는 프로젝트를 보여 주지 않는다.
   - [도움말]은 ghost 링크이고 `target="_blank"`(뒤에 `sr-only` "(새 창)")다. `HELP_URL`이 비어 있으면 숨긴다.
   - [로그아웃]은 POST 폼 버튼이고 ghost 스타일이다.
-  - 모바일에서는 이름을 숨긴다(`hidden sm:inline`).
+  - 사용자 이름은 `md`부터 보인다(`hidden md:inline`).
 
 **하단:** 모든 화면 맨 아래 가운데에 "render-box · GitHub"(원본 저장소, `text-xs text-fg-subtle`, 새 창). 도움말과 달리 설정으로 바꾸지 않는다.
 
 **아이콘:** 파비콘은 `logo.svg`, iOS 홈 화면 아이콘은 `apple-touch-icon.png`(180px, 모서리 없음 — iOS가 둥글게 자른다). 렌더링 화면에는 아무것도 넣지 않는다.
 
-**최대 폭:** 모두 `mx-auto`로 가운데 정렬한다.
+**최대 폭:** 상단 바와 모든 화면이 같은 바깥 폭(`max-w-5xl mx-auto`)을 쓴다. 그래야 화면을 옮겨도 왼쪽 시작선이 움직이지 않는다.
 
-- 목록: `max-w-5xl`
-- 상세·등록·수정: `max-w-3xl`
-- 로그인·오류: `max-w-sm` 카드
+- 목록: 바깥 폭 그대로
+- 상세·등록·수정·저장 공간: 바깥 폭 안에서 내용만 `max-w-3xl`, **왼쪽 정렬**(가운데로 모으지 않는다)
+- 오류: 같은 바깥 폭 안에 `max-w-sm` 카드, 왼쪽 정렬
+- 로그인: 상단 바가 없는 화면이라 가운데 `max-w-sm` 카드
+- `html`에 `scrollbar-gutter: stable`: 스크롤바가 생기고 없어질 때 폭이 흔들리지 않게 자리를 늘 비워 둔다.
+- 테스트: `e2e/layout.spec.ts`(모든 화면의 첫 블록이 로고와 같은 왼쪽 선, 360px에서 상단 바 한 줄)
 
 **반응형 기준점:**
 

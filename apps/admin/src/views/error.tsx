@@ -42,8 +42,9 @@ export function ErrorPage({ kind, user }: { kind: ErrorKind; user: SessionUser |
   return (
     <Document title={e.title}>
       {user ? <TopBar user={user} /> : null}
-      <main id="main" class="mx-auto max-w-sm px-4 py-16">
-        <div class={ui.card}>
+      {/* Same container as other pages, so the left edge stays put. */}
+      <main id="main" tabindex={-1} class="mx-auto max-w-5xl px-4 py-10 outline-none sm:px-6 sm:py-16">
+        <div class={`${ui.card} max-w-sm`}>
           <p class="font-mono text-xs text-fg-subtle">{e.status}</p>
           <h1 class="mt-1 text-xl font-semibold">{e.title}</h1>
           <p class="mt-2 text-fg-muted break-keep">{e.body}</p>

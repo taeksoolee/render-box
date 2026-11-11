@@ -38,7 +38,8 @@
 }
 
 @layer base {
-  html { color-scheme: light; }
+  /* Reserve the scrollbar's space so short and long pages have the same width. */
+  html { color-scheme: light; scrollbar-gutter: stable; }
   body { @apply bg-canvas text-fg font-sans text-sm antialiased; }
 }
 

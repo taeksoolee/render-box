@@ -75,16 +75,16 @@ function ProjectMenu({ user, project }: { user: SessionUser; project: Membership
   const others = user.projects.filter((p) => p.projectId !== project.projectId);
   const label = (
     <>
-      <span class="max-w-40 truncate font-medium text-fg">{project.name}</span>
+      <span class="max-w-24 truncate font-medium text-fg sm:max-w-40">{project.name}</span>
       <span class={project.role === "EDITOR" ? ui.badgePrimary : ui.badgeNeutral}>
         {user.admin ? "관리자" : ROLE_LABEL[project.role]}
       </span>
     </>
   );
-  if (others.length === 0) return <span class="flex items-center gap-2 text-sm" data-project={project.slug}>{label}</span>;
+  if (others.length === 0) return <span class="flex min-w-0 items-center gap-2 text-sm" data-project={project.slug}>{label}</span>;
   return (
-    <details class="relative" data-project={project.slug}>
-      <summary class={`${ui.ghost} cursor-pointer list-none gap-2`} aria-label={`프로젝트 ${project.name}, 바꾸기`}>
+    <details class="relative min-w-0" data-project={project.slug}>
+      <summary class={`${ui.ghost} cursor-pointer list-none gap-2 px-2 sm:px-3`} aria-label={`프로젝트 ${project.name}, 바꾸기`}>
         {label}
         <Icon name="chevron-down" class="size-3.5" />
       </summary>
@@ -107,17 +107,18 @@ export function TopBar({ user, project = null }: { user: SessionUser; project?: 
   return (
     <header class="sticky top-0 z-10 h-14 border-b border-line bg-surface">
       <div class="mx-auto flex h-full max-w-5xl items-center justify-between px-4 sm:px-6">
-        <a href="/html" class="inline-flex items-center gap-2 font-semibold text-fg">
+        {/* Logo only below sm: the name, project menu, help and logout do not fit. */}
+        <a href="/html" class="inline-flex shrink-0 items-center gap-2 font-semibold text-fg" aria-label="render-box 목록">
           <img src={asset("logo.svg")} alt="" width="24" height="24" class="size-6" />
-          render-box
+          <span class="hidden sm:inline">render-box</span>
         </a>
-        <div class="flex items-center gap-2">
+        <div class="flex min-w-0 items-center gap-1 sm:gap-2">
           {project ? <ProjectMenu user={user} project={project} /> : null}
-          <span class="hidden text-sm text-fg-muted sm:inline">{user.name}</span>
-          <HelpLink class={ui.ghost} />
-          <form method="post" action="/logout">
+          <span class="hidden text-sm text-fg-muted md:inline">{user.name}</span>
+          <HelpLink class={`${ui.ghost} px-2 sm:px-3`} compact />
+          <form method="post" action="/logout" class="shrink-0">
             <input type="hidden" name="_csrf" value={user.csrfToken ?? ""} />
-            <button type="submit" class={ui.ghost}>
+            <button type="submit" class={`${ui.ghost} px-2 sm:px-3`}>
               로그아웃
             </button>
           </form>
@@ -145,8 +146,10 @@ export function AppPage({
   return (
     <Document title={title} boost={boost}>
       <TopBar user={user} project={project} />
-      <main id="main" tabindex={-1} class={`mx-auto ${width} px-4 py-6 outline-none sm:px-6 sm:py-8`}>
-        {children}
+      {/* Every page uses the header's width so the left edge never moves between
+          pages; reading pages narrow their content inside, aligned left. */}
+      <main id="main" tabindex={-1} class="mx-auto max-w-5xl px-4 py-6 outline-none sm:px-6 sm:py-8">
+        {width === "max-w-5xl" ? children : <div class="max-w-3xl">{children}</div>}
       </main>
     </Document>
   );
@@ -211,13 +214,23 @@ export function BackLink({ href, children }: { href: string; children: Child }) 
 }
 
 // External pages open in a new tab so an unsaved form is not lost.
-export function HelpLink({ class: cls, label = "도움말" }: { class: string; label?: string }) {
+// `compact`: an icon below sm, the label from sm up (top bar).
+export function HelpLink({ class: cls, label = "도움말", compact = false }: { class: string; label?: string; compact?: boolean }) {
   const href = getHelpUrl();
   if (!href) return null;
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" class={cls}>
-      {label}
-      <span class="sr-only"> (새 창)</span>
+    <a href={href} target="_blank" rel="noopener noreferrer" class={`${cls} shrink-0`} aria-label={compact ? `${label} (새 창)` : undefined}>
+      {compact ? (
+        <>
+          <Icon name="circle-help" class="size-5 sm:hidden" />
+          <span class="hidden sm:inline">{label}</span>
+        </>
+      ) : (
+        <>
+          {label}
+          <span class="sr-only"> (새 창)</span>
+        </>
+      )}
     </a>
   );
 }
