@@ -7,7 +7,7 @@
 //   pnpm key revoke <prefix> [--remote]
 //   pnpm key admin <prefix> on|off [--remote]   all-projects admin (D-38)
 import { createHash, randomInt } from "node:crypto";
-import { d1, fail, findKey, findProject, flag, option, parseRole, positional, sqlString } from "./lib/d1-cli";
+import { d1, fail, findKey, findProject, flag, option, parseRole, positional, sqlString, TARGET } from "./lib/d1-cli";
 
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -39,7 +39,7 @@ switch (command) {
     const where = admin ? "모든 프로젝트 관리자" : project ? `${project.slug} ${role}` : "프로젝트 없음";
     console.log(`\n${name} (${where}) 키를 발급했습니다. 이 키는 다시 볼 수 없으니 지금 전달하세요.\n\n  ${key}\n`);
     if (admin) console.log("관리자 키는 모든 프로젝트 문서를 고치고 지울 수 있습니다. 꼭 필요한 사람에게만 주세요.\n");
-    if (!project && !admin) console.log(`프로젝트에 넣으려면: pnpm project grant ${key.slice(0, 8)} <slug> --role EDITOR|VIEWER\n`);
+    if (!project && !admin) console.log(`프로젝트에 넣으려면: pnpm project grant ${key.slice(0, 8)} <slug> --role EDITOR|VIEWER${TARGET}\n`);
     break;
   }
   case "list": {
@@ -81,7 +81,7 @@ switch (command) {
     break;
   }
   case "set-role":
-    fail("역할은 프로젝트마다 정합니다: pnpm project grant <prefix> <slug> --role EDITOR|VIEWER");
+    fail(`역할은 프로젝트마다 정합니다: pnpm project grant <prefix> <slug> --role EDITOR|VIEWER${TARGET}`);
   default:
     fail("usage: pnpm key <create|list|revoke|admin> ... [--remote]");
 }

@@ -11,7 +11,7 @@
 //   pnpm project delete <slug>      only when it has no documents
 //
 // Add --remote to run against production.
-import { d1, fail, findKey, findProject, isSlug, parseRole, positional, option, remote, sqlString } from "./lib/d1-cli";
+import { d1, fail, findKey, findProject, isSlug, parseRole, positional, option, remote, sqlString, TARGET } from "./lib/d1-cli";
 import { readDeployConfig } from "./lib/remote";
 
 const [command, a, b] = positional;
@@ -28,7 +28,7 @@ switch (command) {
     if (d1(`SELECT id FROM projects WHERE slug = ${sqlString(a)}`).length) fail(`이미 있는 프로젝트입니다: ${a}`);
     const projectName = name();
     d1(`INSERT INTO projects (slug, name, created_at) VALUES (${sqlString(a)}, ${sqlString(projectName)}, ${now})`);
-    console.log(`프로젝트 ${a} (${projectName})를 만들었습니다. 키를 넣으려면: pnpm project grant <prefix> ${a} --role EDITOR`);
+    console.log(`프로젝트 ${a} (${projectName})를 만들었습니다. 키를 넣으려면: pnpm project grant <prefix> ${a} --role EDITOR${TARGET}`);
     break;
   }
   case "list": {
@@ -77,7 +77,7 @@ switch (command) {
       ),
     );
     const admins = d1("SELECT COUNT(*) AS n FROM access_keys WHERE is_admin = 1 AND revoked_at IS NULL")[0]?.n;
-    if (admins) console.log(`이 밖에 관리자 키 ${admins}개가 모든 프로젝트에 접근합니다 (pnpm key list).`);
+    if (admins) console.log(`이 밖에 관리자 키 ${admins}개가 모든 프로젝트에 접근합니다 (pnpm key list${TARGET}).`);
     break;
   }
   case "move": {
@@ -97,7 +97,7 @@ switch (command) {
     const project = findProject(a);
     const docs = Number(d1(`SELECT COUNT(*) AS n FROM html_documents WHERE project_id = ${project.id}`)[0]?.n ?? 0);
     if (docs > 0) {
-      fail(`${project.slug}에 문서 ${docs}개가 남아 있어 지우지 않았습니다. 먼저 옮기거나(pnpm project move <문서 키> <slug>) 화면에서 지우세요.`);
+      fail(`${project.slug}에 문서 ${docs}개가 남아 있어 지우지 않았습니다. 먼저 옮기거나(pnpm project move <문서 키> <slug>${TARGET}) 화면에서 지우세요.`);
     }
     const members = Number(d1(`SELECT COUNT(*) AS n FROM key_projects WHERE project_id = ${project.id}`)[0]?.n ?? 0);
     d1(`DELETE FROM key_projects WHERE project_id = ${project.id}; DELETE FROM projects WHERE id = ${project.id};`);
