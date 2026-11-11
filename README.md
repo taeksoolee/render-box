@@ -51,7 +51,7 @@ git clone https://github.com/taeksoolee/render-box.git && cd render-box
 nvm use && pnpm install
 pnpm --filter @render-box/admin exec wrangler login
 pnpm setup:remote
-pnpm project create <slug> --name <이름> --remote          # 예: tamna --name 탐나
+pnpm project create <slug> --name <이름> --remote          # 예: tamna --name Tamna
 pnpm key create --remote --name <이름> --project <slug> --role EDITOR
 ```
 
@@ -74,7 +74,7 @@ pnpm key create --remote --name <이름> --project <slug> --role EDITOR
 | `pnpm key create --remote --name <이름> --project <slug> --role EDITOR\|VIEWER` | 키 발급. 키 원문은 이때 한 번만 보입니다 |
 | `pnpm key list --remote` / `revoke <prefix> --remote` | 키 목록(관리자 여부, 속한 프로젝트와 역할)·회수 |
 | `pnpm key create --remote --name <이름> --admin` / `pnpm key admin <prefix> on\|off --remote` | **관리자 키**: 멤버십 없이 모든 프로젝트(새로 만든 것 포함)의 문서를 관리합니다. 키·프로젝트 관리는 관리자도 CLI로만 합니다. 꼭 필요한 사람에게만 주세요 |
-| `pnpm project create <slug> --name <이름> --remote` | 프로젝트 만들기 (예: `tamna --name 탐나`) |
+| `pnpm project create <slug> --name <이름> --remote` | 프로젝트 만들기 (예: `tamna --name Tamna`) |
 | `pnpm project grant <prefix> <slug> --role EDITOR\|VIEWER --remote` | 키를 프로젝트에 넣거나 역할 바꾸기. `revoke <prefix> <slug>`로 빼기 |
 | `pnpm project list` / `members <slug>` / `rename <slug> --name …` / `move <문서 키> <slug>` (`--remote`) | 프로젝트 목록·멤버·이름 바꾸기·문서 옮기기 |
 | `pnpm project delete <slug> --remote` | 프로젝트 지우기. 문서가 하나도 없을 때만 되고, 멤버 연결도 함께 지웁니다 |

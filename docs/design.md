@@ -702,7 +702,7 @@ PK: `(blob_id, seq)`
 | --- | --- | --- |
 | id | INTEGER PK | |
 | slug | TEXT UNIQUE NOT NULL | CLI·API·URL용 이름 (`tamna`) |
-| name | TEXT NOT NULL | 화면 이름 (`탐나`) |
+| name | TEXT NOT NULL | 화면 이름 (`Tamna`) |
 | created_at | INTEGER NOT NULL | |
 
 `access_keys.is_admin INTEGER NOT NULL DEFAULT 0` (마이그레이션 0003): 모든 프로젝트 관리자 (3.9, D-38).

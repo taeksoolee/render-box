@@ -308,7 +308,13 @@ export function DocumentFormPage({
   return (
     // Not boosted: the upload code binds window-level drag/drop listeners that
     // a body swap would leave behind (a full load on the way in and out).
-    <AppPage title={edit ? `문서 수정 · ${mode.title}` : "새 HTML 등록"} user={user} project={project} boost={false}>
+    <AppPage
+      title={edit ? `문서 수정 · ${mode.title}` : "새 HTML 등록"}
+      user={user}
+      project={project}
+      boost={false}
+      width="max-w-5xl"
+    >
       <div class="space-y-6">
         <BackLink href={edit ? `/html/${mode.documentKey}` : `/html?project=${encodeURIComponent(project.slug)}`}>
           {edit ? mode.title : `${project.name} 목록`}
@@ -359,6 +365,10 @@ export function DocumentFormPage({
           <input type="hidden" name="upload_id" value={kept ? String(kept.id) : ""} data-upload-id />
           {values.version ? <input type="hidden" name="version" value={String(values.version)} /> : null}
 
+          {/* Two columns from lg up so the form uses the page's width without
+              stretching the inputs: the HTML on one side, the document's
+              fields on the other (create: HTML first; edit: fields first). */}
+          <div class="grid gap-8 lg:grid-cols-2 lg:items-start">
           {edit ? null : <HtmlInput mode={mode} kept={kept} error={errors.html} />}
 
           <div class="space-y-5">
@@ -436,6 +446,7 @@ export function DocumentFormPage({
           </div>
 
           {edit ? <HtmlInput mode={mode} kept={kept} error={errors.html} /> : null}
+          </div>
 
           <details class="rounded-lg border border-line bg-surface px-4 py-3">
             <summary class="cursor-pointer text-sm font-medium">업로드한 HTML에서 안 되는 것 (5가지)</summary>

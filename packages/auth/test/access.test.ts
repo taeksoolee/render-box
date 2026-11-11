@@ -15,7 +15,7 @@ let other: number;
 
 beforeEach(() => {
   d1 = createTestD1();
-  tamna = id("INSERT INTO projects (slug, name, created_at) VALUES ('tamna', '탐나', 0) RETURNING id");
+  tamna = id("INSERT INTO projects (slug, name, created_at) VALUES ('tamna', 'Tamna', 0) RETURNING id");
   other = id("INSERT INTO projects (slug, name, created_at) VALUES ('other', '다른', 0) RETURNING id");
   member = id("INSERT INTO access_keys (name, key_hash, key_prefix, created_at) VALUES ('m', 'h1', 'rb_m', 0) RETURNING id");
   admin = id("INSERT INTO access_keys (name, key_hash, key_prefix, is_admin, created_at) VALUES ('a', 'h2', 'rb_a', 1, 0) RETURNING id");
