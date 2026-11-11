@@ -5,6 +5,9 @@
 //
 // --env makes a separate deployment in the same account (Workers
 // render-box-<name>-*, D1 render-box-<name>, render-box.<name>.deploy.json).
+// --base-name <name> on the first run picks other Worker/D1 names, e.g.
+// `--env client-a --base-name render-box` for the only deployment in another
+// account (render-box-admin, still render-box.client-a.deploy.json).
 //
 // 1. Checks `wrangler login` and picks the account
 // 2. Finds or creates the D1 database "render-box"
@@ -13,6 +16,7 @@
 // 5. Applies migrations, deploys all Workers, runs the header checks
 import { randomBytes } from "node:crypto";
 import {
+  BASE_NAME_OVERRIDE,
   CONFIG_NAME,
   DB_NAME,
   ENV_FLAG,
@@ -79,7 +83,7 @@ if (databaseId) {
   console.log(`  만들었습니다: ${databaseId}`);
 }
 
-const config: DeployConfig = { ...existing, accountId, databaseId };
+const config: DeployConfig = { ...existing, accountId, databaseId, baseName: BASE_NAME_OVERRIDE };
 const subdomain = option("subdomain");
 if (subdomain) config.origins = workersDevOrigins(subdomain);
 writeDeployConfig(config);

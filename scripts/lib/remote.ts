@@ -8,15 +8,24 @@
 // (render-box-<name>-admin, D1 render-box-<name>), so several deployments can
 // share one Cloudflare account without touching each other. Without it the
 // names are the plain render-box ones.
+//
+// `--base-name <name>` on the first `setup:remote` replaces that base (e.g. an
+// environment alone in another account keeps the plain render-box-admin). It
+// is stored in the environment's config as baseName, so later commands need
+// only --env, and a different --base-name for an existing config is refused.
 import { execFileSync, spawnSync, type StdioOptions } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 export const ROOT = new URL("../../", import.meta.url);
 
-function envFromArgs(): string | null {
+const argValue = (flag: string) => {
   const args = process.argv.slice(2);
-  const i = args.indexOf("--env");
-  const value = i >= 0 ? args[i + 1] : process.env.RB_ENV;
+  const i = args.indexOf(flag);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+
+function envFromArgs(): string | null {
+  const value = argValue("--env") ?? process.env.RB_ENV;
   if (value === undefined || value === "") return null;
   if (!/^[a-z0-9](?:[a-z0-9-]{0,18}[a-z0-9])?$/.test(value)) {
     console.error(`--env는 소문자·숫자·-로 1~20자여야 합니다: ${value}`);
@@ -27,11 +36,33 @@ function envFromArgs(): string | null {
 
 // The selected environment, or null for the default deployment.
 export const ENV = envFromArgs();
-// Base of the Worker and D1 names.
-export const BASE_NAME = ENV ? `render-box-${ENV}` : "render-box";
-export const DB_NAME = BASE_NAME;
 export const CONFIG_NAME = ENV ? `render-box.${ENV}.deploy.json` : "render-box.deploy.json";
 const CONFIG_FILE = new URL(CONFIG_NAME, ROOT);
+
+function baseName(): { base: string; override?: string } {
+  const fallback = ENV ? `render-box-${ENV}` : "render-box";
+  const stored = existsSync(CONFIG_FILE)
+    ? ((JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as DeployConfig).baseName ?? fallback)
+    : undefined;
+  const flag = argValue("--base-name");
+  if (flag !== undefined && !/^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/.test(flag)) {
+    console.error(`--base-name은 소문자·숫자·-로 1~40자여야 합니다: ${flag}`);
+    process.exit(1);
+  }
+  if (flag !== undefined && stored !== undefined && flag !== stored) {
+    console.error(`${CONFIG_NAME}은 이미 이름 ${stored}로 만들어졌습니다. --base-name을 빼거나, 지우고(teardown) 다시 만드세요.`);
+    process.exit(1);
+  }
+  const base = stored ?? flag ?? fallback;
+  return { base, override: base === fallback ? undefined : base };
+}
+
+// Base of the Worker and D1 names.
+const names = baseName();
+export const BASE_NAME = names.base;
+// Set when the base is not the default for this environment (saved as baseName).
+export const BASE_NAME_OVERRIDE = names.override;
+export const DB_NAME = BASE_NAME;
 // Appended to the commands we print, so they target the same environment.
 export const ENV_FLAG = ENV ? ` --env ${ENV}` : "";
 
@@ -40,6 +71,8 @@ export type App = (typeof APPS)[number];
 
 export type DeployConfig = {
   accountId: string;
+  // Base of the Worker and D1 names when not the default (--base-name).
+  baseName?: string;
   databaseId: string;
   // Filled after the first deploy reveals the workers.dev subdomain, or set by
   // hand for custom domains.

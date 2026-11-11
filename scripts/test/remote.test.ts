@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // Environments (--env) give Workers, D1 and the deploy config their own names,
@@ -46,6 +46,27 @@ describe("deploy environments", () => {
 
   it("rejects names that cannot be part of a Worker name", () => {
     expect(() => probe(["--env", "Staging_1"])).toThrow();
+  });
+
+  it("--base-name replaces the prefix but keeps the environment's config file", () => {
+    expect(probe(["--env", "zz-probe", "--base-name", "render-box"])).toMatchObject({
+      config: "render-box.zz-probe.deploy.json",
+      workers: { render: "render-box-render", admin: "render-box-admin", api: "render-box-api" },
+      db: "render-box",
+      dbName: '"render-box"',
+    });
+  });
+
+  it("a saved baseName wins, and a different --base-name is refused", () => {
+    const file = new URL("render-box.zz-probe.deploy.json", `file://${ROOT}`);
+    writeFileSync(file, JSON.stringify({ accountId: "a", databaseId: "d", baseName: "rb" }));
+    try {
+      expect(probe(["--env", "zz-probe"])).toMatchObject({ db: "rb", workers: { admin: "rb-admin" } });
+      expect(probe(["--env", "zz-probe", "--base-name", "rb"])).toMatchObject({ db: "rb" });
+      expect(() => probe(["--env", "zz-probe", "--base-name", "other"])).toThrow();
+    } finally {
+      rmSync(file, { force: true });
+    }
   });
 
   it("per-environment configs are not committed", () => {

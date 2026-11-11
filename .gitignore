@@ -12,5 +12,9 @@ playwright-report/
 render-box.deploy.json
 render-box.*.deploy.json
 apps/*/wrangler.deploy.toml
+backups/
 apps/admin/public/static/h/
 apps/admin/public/static/manifest.json
+.env
+.env.*
+!.env.example

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { deployConfigArgs, ENV_FLAG, readDeployConfig, wrangler, writeWranglerConfigs } from "./remote";
 
 const args = process.argv.slice(2);
-const VALUE_OPTIONS = new Set(["--name", "--role", "--project", "--env"]);
+const VALUE_OPTIONS = new Set(["--name", "--role", "--project", "--env", "--base-name"]);
 
 export const remote = args.includes("--remote");
 // Appended to the follow-up commands we print, so copying one targets the same
