@@ -256,6 +256,64 @@
     });
   }
 
+  // What to paste into the AI tool that made the HTML: the cause, the fix and
+  // where the code is, so it can be sent as is.
+  function frameAccessPrompt(found) {
+    return (
+      "이 HTML은 sandbox(출처 없음) 환경에서 열려서, 부모 페이지와 iframe이 서로의 document에 직접 접근할 수 없어 " +
+      "(contentDocument, contentWindow.document, parent.document 모두 막힘). " +
+      "부모와 iframe 사이의 통신을 전부 postMessage로 바꿔 줘: 요소 위치·크기는 iframe이 부모에게 보내고, " +
+      "클릭에 따른 스크롤·열기 같은 동작은 부모가 iframe에 메시지로 요청하게 해 줘. " +
+      "고쳐야 할 코드: " + found.slice(0, 10).join(", ") + (found.length > 10 ? " 외 " + (found.length - 10) + "곳" : "")
+    );
+  }
+
+  // A box inside a warning with text to copy (e.g. a request for the AI).
+  function promptBox(text) {
+    var box = document.createElement("div");
+    box.className = "mt-2 rounded-md border border-warning-line bg-surface p-3";
+    box.setAttribute("data-prompt-box", "");
+    var head = document.createElement("div");
+    head.className = "flex items-center justify-between gap-2";
+    var label = document.createElement("span");
+    label.className = "text-xs font-medium text-fg-muted";
+    label.textContent = "AI에게 보낼 요청";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      "inline-flex h-8 shrink-0 items-center rounded-md border border-line-input bg-surface px-3 text-xs font-medium text-fg hover:bg-canvas";
+    btn.textContent = "복사";
+    var body = document.createElement("p");
+    // Words stay whole (Korean and code alike); only an overlong token wraps.
+    body.className = "mt-2 whitespace-pre-wrap break-keep wrap-anywhere text-xs leading-5 text-fg";
+    body.textContent = text;
+    btn.addEventListener("click", function () {
+      var done = function () {
+        btn.textContent = "복사했습니다";
+        announce("요청 문구를 복사했습니다");
+        setTimeout(function () {
+          btn.textContent = "복사";
+        }, 2000);
+      };
+      // No clipboard access: select the text so Ctrl+C / ⌘C copies it.
+      var fallback = function () {
+        var range = document.createRange();
+        range.selectNodeContents(body);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        btn.textContent = "선택해 두었습니다 (Ctrl+C)";
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+      else fallback();
+    });
+    head.appendChild(label);
+    head.appendChild(btn);
+    box.appendChild(head);
+    box.appendChild(body);
+    return box;
+  }
+
   function examples(list) {
     var shown = list.slice(0, 3).join(", ");
     return list.length > 3 ? shown + " 외 " + (list.length - 3) + "개" : shown;
@@ -395,8 +453,9 @@
       if (found.frameAccess.length)
         items.push([
           "iframe 안의 문서를 직접 읽는 코드가 있어, iframe과 연결된 부분(화면 위 표시, 클릭하면 이동 등)이 동작하지 않습니다. " +
-            "렌더링 화면은 보안상 iframe과 서로 다른 출처로 열립니다. AI에게 \"부모와 iframe 사이 통신을 postMessage로 바꿔 줘\"라고 요청하세요.",
+            "렌더링 화면은 보안상 iframe과 서로 다른 출처로 열립니다. 아래 요청을 AI에게 보내 고치세요.",
           found.frameAccess,
+          frameAccessPrompt(found.frameAccess),
         ]);
       items.forEach(function (item) {
         var li = document.createElement("li");
@@ -405,6 +464,7 @@
         ex.className = "font-mono text-xs break-all";
         ex.textContent = "예: " + examples(item[1]);
         li.appendChild(ex);
+        if (item[2]) li.appendChild(promptBox(item[2]));
         warningList.appendChild(li);
       });
       warnings.hidden = items.length === 0;
