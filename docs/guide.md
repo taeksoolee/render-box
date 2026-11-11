@@ -97,14 +97,21 @@ HTML을 교체할 때마다 이전 HTML이 **버전**으로 남습니다. 상세
 
 ## AI 도구로 올리기
 
-Claude Code 같은 AI 도구에서 "render-box에 올려 줘"라고 말해 HTML을 바로 올리고 렌더링 주소를 받을 수 있습니다 (MCP). 로그인에 쓰는 접근 키를 그대로 씁니다.
+Claude Code 같은 AI 도구에서 "render-box에 올려 줘"라고 말해 HTML을 바로 올리고 렌더링 주소를 받을 수 있습니다 (MCP). 로그인에 쓰는 접근 키로 연결합니다.
 
-```sh
-claude mcp add --transport http render-box https://<API 주소>/mcp \
-  --header "Authorization: Bearer rb_..."
-```
+1. **키 준비:** 로그인 키를 써도 되지만, AI 도구용 키를 운영자에게 하나 더 받아 두는 것을 권합니다. 키는 AI 도구 설정 파일에 그대로 저장되므로, 따로 두면 문제가 생겼을 때 그 키만 회수하면 됩니다.
+2. **연결:** 터미널에서 실행합니다.
+
+   ```sh
+   claude mcp add --transport http render-box https://<API 주소>/mcp \
+     --header "Authorization: Bearer rb_..."
+   ```
+
+3. **확인:** `claude mcp list`에서 `render-box`가 연결됨(✓)으로 보이면 됩니다. **새 Claude Code 세션**을 열어 쓰세요.
 
 - API 주소는 운영자에게 물어보세요. 보통 관리 화면 주소의 `admin`을 `api`로 바꾼 주소입니다.
+- render-box가 업데이트되어 AI에게 주는 안내가 바뀌면, 새 세션을 열어야 반영됩니다.
+- 올린 HTML에 동작하지 않을 코드가 있으면 결과 맨 앞에 "⚠ 저장은 했지만…"이 나오고, AI가 고쳐서 다시 올립니다 ([올릴 때 나오는 경고](#올릴-때-나오는-경고)).
 - 이렇게 말하면 됩니다: "회원가입 화면 HTML 만들어서 render-box에 올려 줘", "방금 문서에서 버튼 색만 바꿔서 업데이트해 줘"
 - 편집할 수 있는 프로젝트가 여럿이면 "tamna 프로젝트에 올려 줘"처럼 프로젝트를 말해 주세요.
 - AI로는 1MB까지 올릴 수 있고, 삭제는 할 수 없습니다. 이미지는 HTML 안에 넣거나 `https://` 주소를 써야 합니다.

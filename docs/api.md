@@ -46,7 +46,9 @@ claude mcp add --transport http render-box "$RB_API/mcp" \
 
 `claude mcp list`에서 `render-box`가 연결됨(✓)으로 보이면 준비가 끝난 것입니다. 다른 MCP 클라이언트도 **Streamable HTTP** 방식과 **`Authorization` 헤더**를 지원하면 같은 주소로 연결됩니다.
 
-> 키는 클라이언트 설정 파일에 그대로 저장됩니다. 공용 PC에서는 연결하지 마세요.
+> 키는 클라이언트 설정 파일에 그대로 저장됩니다. 공용 PC에서는 연결하지 마세요. AI 도구용 키를 따로 받아 두면, 문제가 생겼을 때 그 키만 회수할 수 있습니다.
+
+연결이나 도구 설명은 세션을 시작할 때 읽습니다. render-box가 업데이트되어 안내가 바뀌면 새 세션을 여세요.
 
 ### 이렇게 말하면 됩니다
 
