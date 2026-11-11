@@ -119,6 +119,16 @@ if (hasSecret("render") && hasSecret("admin")) {
 step("마이그레이션");
 wrangler("admin", ["d1", "migrations", "apply", "DB", "--remote", ...deployConfigArgs]);
 
+// Migration 0002 creates a "default" project to hold existing data. On a new
+// install it is empty and has no members: remove it, so the first project is
+// one you name.
+wrangler("admin", [
+  "d1", "execute", "DB", "--remote", ...deployConfigArgs, "--command",
+  `DELETE FROM projects WHERE slug = 'default'
+     AND NOT EXISTS (SELECT 1 FROM html_documents d WHERE d.project_id = projects.id)
+     AND NOT EXISTS (SELECT 1 FROM key_projects kp WHERE kp.project_id = projects.id)`,
+], { capture: true });
+
 step("배포 (render → admin → api)");
 deployAll();
 
@@ -126,9 +136,10 @@ step("배포 후 점검");
 run("pnpm", ["-s", "check:headers"]);
 
 console.log(`
-✓ 준비가 끝났습니다. 첫 편집자 키를 만들고 ${config.origins.app} 에서 로그인하세요:
+✓ 준비가 끝났습니다. 프로젝트와 첫 편집자 키를 만들고 ${config.origins.app} 에서 로그인하세요:
 
-  pnpm key create --remote --name <이름> --project default --role EDITOR
+  pnpm project create <slug> --name <이름> --remote
+  pnpm key create --remote --name <이름> --project <slug> --role EDITOR
 
-프로젝트를 더 만들려면: pnpm project create <slug> --name <이름> --remote
+모든 프로젝트를 관리할 키는 --project 대신 --admin으로 만듭니다.
 `);

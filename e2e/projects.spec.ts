@@ -164,4 +164,34 @@ test.describe("projects", () => {
     await page.goto(`${APP}/html`);
     await expect(page.getByText("속한 프로젝트가 없습니다")).toBeVisible();
   });
+
+  test("a key with no project gets one page that says whom to ask and which key", async ({ page }) => {
+    const value = /rb_[0-9A-Za-z]{32}/.exec(cli("key", "create", "--name", `no-project-${run}`))![0];
+    await loginWith(page, value);
+    for (const path of ["/html", "/html/new", "/storage"]) {
+      await page.goto(APP + path);
+      await expect(page.getByRole("heading", { name: "아직 속한 프로젝트가 없습니다" })).toBeVisible();
+      await expect(page.locator("[data-key-prefix]")).toHaveText(`${value.slice(0, 8)}…`);
+      await expect(page.getByRole("textbox", { name: "관리자에게 보낼 명령" })).toHaveValue(
+        `pnpm project grant ${value.slice(0, 8)} <프로젝트> --role EDITOR --remote`,
+      );
+    }
+    // Added to a project: the next request shows it, no new login.
+    cli("project", "grant", value.slice(0, 8), OTHER, "--role", "VIEWER");
+    await page.goto(`${APP}/html`);
+    await expect(page.locator("header [data-project]")).toHaveAttribute("data-project", OTHER);
+  });
+
+  test("project delete removes only an empty project", () => {
+    const empty = `e2e-empty-${run}`;
+    cli("project", "create", empty, "--name", "빈 프로젝트");
+    cli("project", "grant", outsider.slice(0, 8), empty, "--role", "VIEWER");
+    expect(cli("project", "delete", empty)).toContain("지웠습니다");
+    expect(cli("project", "list")).not.toContain(empty);
+    // OTHER has documents: refused, nothing changes.
+    expect(() => execFileSync("pnpm", ["-s", "project", "delete", OTHER], { encoding: "utf8", stdio: "pipe" })).toThrow(
+      /문서 \d+개가 남아 있어/,
+    );
+    expect(cli("project", "list")).toContain(OTHER);
+  });
 });

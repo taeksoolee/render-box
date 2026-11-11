@@ -51,10 +51,11 @@ git clone https://github.com/taeksoolee/render-box.git && cd render-box
 nvm use && pnpm install
 pnpm --filter @render-box/admin exec wrangler login
 pnpm setup:remote
-pnpm key create --remote --name <이름> --project default --role EDITOR
+pnpm project create <slug> --name <이름> --remote          # 예: tamna --name 탐나
+pnpm key create --remote --name <이름> --project <slug> --role EDITOR
 ```
 
-처음에는 `default`("기본") 프로젝트 하나가 있습니다. 프로젝트를 더 만들고 키를 넣는 방법은 아래 표를 보세요.
+속한 프로젝트가 없는 키로 로그인하면, 관리자에게 보낼 키 앞자리와 `project grant` 명령을 보여 주는 안내 화면이 나옵니다.
 
 `pnpm setup:remote`가 다음을 한 번에 합니다. 다시 실행해도 이미 있는 것은 그대로 씁니다.
 
@@ -76,6 +77,7 @@ pnpm key create --remote --name <이름> --project default --role EDITOR
 | `pnpm project create <slug> --name <이름> --remote` | 프로젝트 만들기 (예: `tamna --name 탐나`) |
 | `pnpm project grant <prefix> <slug> --role EDITOR\|VIEWER --remote` | 키를 프로젝트에 넣거나 역할 바꾸기. `revoke <prefix> <slug>`로 빼기 |
 | `pnpm project list` / `members <slug>` / `rename <slug> --name …` / `move <문서 키> <slug>` (`--remote`) | 프로젝트 목록·멤버·이름 바꾸기·문서 옮기기 |
+| `pnpm project delete <slug> --remote` | 프로젝트 지우기. 문서가 하나도 없을 때만 되고, 멤버 연결도 함께 지웁니다 |
 
 `render-box.deploy.json`에서 바꿀 수 있는 값:
 

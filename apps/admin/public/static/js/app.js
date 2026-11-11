@@ -90,7 +90,7 @@
         var value = btn.dataset.copy;
         var done = function () {
           btn.dataset.copied = "true";
-          announce("렌더링 URL을 복사했습니다");
+          announce("복사했습니다");
           setTimeout(function () {
             delete btn.dataset.copied;
           }, 2000);

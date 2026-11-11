@@ -10,6 +10,9 @@ export type SessionUser = {
   csrfToken: string | null;
   keyId: number;
   name: string;
+  // First 8 characters, as `pnpm key list` shows them: lets a key with no
+  // project tell the operator which key to add (design.md 3.9).
+  keyPrefix: string;
   // All-projects admin (D-38); `projects` then lists every project as EDITOR.
   admin: boolean;
   projects: Membership[];
@@ -51,7 +54,7 @@ export async function loadSession(
     d1
       .prepare(
         `SELECT s.id AS sessionId, s.family_id AS familyId, s.csrf_token AS csrfToken, s.expires_at AS expiresAt,
-                k.id AS keyId, k.name, k.revoked_at AS revokedAt, k.is_admin AS admin
+                k.id AS keyId, k.name, k.key_prefix AS keyPrefix, k.revoked_at AS revokedAt, k.is_admin AS admin
          FROM sessions s JOIN access_keys k ON k.id = s.key_id
          WHERE s.id = ? AND s.host = ?`,
       )

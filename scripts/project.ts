@@ -8,9 +8,11 @@
 //   pnpm project revoke <key prefix> <slug>
 //   pnpm project members <slug>
 //   pnpm project move <document key> <slug>
+//   pnpm project delete <slug>      only when it has no documents
 //
 // Add --remote to run against production.
-import { d1, fail, findKey, findProject, isSlug, parseRole, positional, option, sqlString } from "./lib/d1-cli";
+import { d1, fail, findKey, findProject, isSlug, parseRole, positional, option, remote, sqlString } from "./lib/d1-cli";
+import { readDeployConfig } from "./lib/remote";
 
 const [command, a, b] = positional;
 const now = Date.now();
@@ -89,6 +91,22 @@ switch (command) {
     console.log(`'${doc.title}'을(를) ${project.slug}(으)로 옮겼습니다. 렌더링 URL은 그대로입니다.`);
     break;
   }
+  case "delete": {
+    // Only an empty project: deleting documents is never a side effect of
+    // this command (D-37). Its memberships go with it.
+    const project = findProject(a);
+    const docs = Number(d1(`SELECT COUNT(*) AS n FROM html_documents WHERE project_id = ${project.id}`)[0]?.n ?? 0);
+    if (docs > 0) {
+      fail(`${project.slug}에 문서 ${docs}개가 남아 있어 지우지 않았습니다. 먼저 옮기거나(pnpm project move <문서 키> <slug>) 화면에서 지우세요.`);
+    }
+    const members = Number(d1(`SELECT COUNT(*) AS n FROM key_projects WHERE project_id = ${project.id}`)[0]?.n ?? 0);
+    d1(`DELETE FROM key_projects WHERE project_id = ${project.id}; DELETE FROM projects WHERE id = ${project.id};`);
+    console.log(`프로젝트 ${project.slug}(${project.name})를 지웠습니다. 멤버 ${members}명의 연결도 함께 지웠습니다.`);
+    if (remote && readDeployConfig().defaultProject === project.slug) {
+      console.log("render-box.deploy.json의 defaultProject가 이 프로젝트입니다. 바꾸고 pnpm deploy:prod로 다시 배포하세요.");
+    }
+    break;
+  }
   default:
-    fail("usage: pnpm project <create|list|rename|grant|revoke|members|move> ... [--remote]");
+    fail("usage: pnpm project <create|list|rename|grant|revoke|members|move|delete> ... [--remote]");
 }

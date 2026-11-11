@@ -60,15 +60,6 @@ function NewWindowLink({ row, origin, compact = false }: { row: ListRow; origin:
 }
 
 function Empty({ data }: { data: ListData }) {
-  if (!data.project) {
-    return (
-      <div class={ui.empty}>
-        <Icon name="file-code" class="mx-auto size-8 text-fg-subtle" />
-        <p class="mt-3 text-base font-semibold">속한 프로젝트가 없습니다</p>
-        <p class="mt-1 text-fg-muted break-keep">문서를 보려면 운영자에게 프로젝트에 넣어 달라고 요청하세요.</p>
-      </div>
-    );
-  }
   if (data.q) {
     return (
       <div class={ui.empty}>
@@ -81,7 +72,7 @@ function Empty({ data }: { data: ListData }) {
       </div>
     );
   }
-  return data.project.role === "EDITOR" ? (
+  return data.project?.role === "EDITOR" ? (
     <div class={ui.empty}>
       <Icon name="upload" class="mx-auto size-8 text-fg-subtle" />
       <p class="mt-3 text-base font-semibold">아직 등록한 HTML이 없습니다</p>

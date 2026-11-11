@@ -56,6 +56,7 @@ import { ListCount, ListPage, ListRegion, type ListData } from "./views/list";
 import { LoginPage } from "./views/login";
 import { loadManifest } from "./views/assets";
 import { setHelpUrl } from "./views/links";
+import { NoProjectPage } from "./views/no-project";
 import { StoragePage } from "./views/storage";
 
 type Ctx = Context<AppEnv>;
@@ -251,6 +252,7 @@ app.get("/html", requireLogin, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
   const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
   const project = currentProject(c);
+  if (!project) return c.html(<NoProjectPage user={c.get("user")!} />);
   // Search and paging swap only the list; boosted navigation and history
   // restores (hx-boost) can send HX-Request too but need the whole page.
   const htmx =
@@ -259,7 +261,7 @@ app.get("/html", requireLogin, async (c) => {
     c.req.header("HX-History-Restore-Request") !== "true";
   // The list and the storage summary in parallel; HTMX swaps need only the list.
   const [{ rows, total }, storage] = await Promise.all([
-    listDocuments(c.env.DB, { q, page, pageSize: PAGE_SIZE, projectIds: project ? [project.projectId] : [] }),
+    listDocuments(c.env.DB, { q, page, pageSize: PAGE_SIZE, projectIds: [project.projectId] }),
     htmx ? null : storageUsage(c.env.DB, storageLimits(c.env)),
   ]);
 
@@ -336,7 +338,8 @@ function editMode(doc: DocRow, conflict = false): FormMode {
 
 app.get("/html/new", requireLogin, (c) => {
   const project = currentProject(c);
-  if (project?.role !== "EDITOR") return errorPage(c, "forbidden");
+  if (!project) return c.html(<NoProjectPage user={c.get("user")!} />);
+  if (project.role !== "EDITOR") return errorPage(c, "forbidden");
   return renderForm(c, { project, mode: { kind: "create" }, values: emptyValues() });
 });
 
@@ -532,6 +535,7 @@ app.post("/html/:key/v/:seq/delete", requireLogin, formLimit, async (c) => {
 
 app.get("/storage", requireLogin, async (c) => {
   const user = c.get("user")!;
+  if (user.projects.length === 0) return c.html(<NoProjectPage user={user} />);
   const ids = user.projects.map((p) => p.projectId);
   const [usage, versions, used] = await Promise.all([
     storageUsage(c.env.DB, storageLimits(c.env)),

@@ -19,9 +19,19 @@ export type DetailDoc = {
   updatedAt: number;
 };
 
-export function CopyButton({ value, cls, label }: { value: string; cls: string; label: string }) {
+export function CopyButton({
+  value,
+  cls,
+  label,
+  target = "render-url",
+}: {
+  value: string;
+  cls: string;
+  label: string;
+  target?: string;
+}) {
   return (
-    <button type="button" class={`group ${cls}`} data-copy={value} data-copy-target="render-url">
+    <button type="button" class={`group ${cls}`} data-copy={value} data-copy-target={target}>
       <span class="inline-flex items-center gap-1.5 group-data-[copied=true]:hidden">
         <Icon name="copy" />
         {label}
