@@ -21,6 +21,7 @@
     "project": "tsx scripts/project.ts",
     "setup:local": "tsx scripts/setup-local.ts && pnpm db:migrate:local",
     "setup:remote": "tsx scripts/setup-remote.ts",
+    "teardown:remote": "tsx scripts/teardown-remote.ts",
     "test:e2e": "playwright test",
     "screenshots": "tsx scripts/screenshots.ts"
   },

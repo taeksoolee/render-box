@@ -2,11 +2,38 @@
 // `pnpm setup:remote`). The committed apps/*/wrangler.toml hold placeholders;
 // from them and this file we generate apps/*/wrangler.deploy.toml (also
 // ignored), and every remote wrangler command runs with that config.
+//
+// Environments: every remote command takes `--env <name>` (or RB_ENV). It
+// selects render-box.<name>.deploy.json and prefixes the Worker and D1 names
+// (render-box-<name>-admin, D1 render-box-<name>), so several deployments can
+// share one Cloudflare account without touching each other. Without it the
+// names are the plain render-box ones.
 import { execFileSync, spawnSync, type StdioOptions } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 export const ROOT = new URL("../../", import.meta.url);
-const CONFIG_FILE = new URL("render-box.deploy.json", ROOT);
+
+function envFromArgs(): string | null {
+  const args = process.argv.slice(2);
+  const i = args.indexOf("--env");
+  const value = i >= 0 ? args[i + 1] : process.env.RB_ENV;
+  if (value === undefined || value === "") return null;
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,18}[a-z0-9])?$/.test(value)) {
+    console.error(`--env는 소문자·숫자·-로 1~20자여야 합니다: ${value}`);
+    process.exit(1);
+  }
+  return value;
+}
+
+// The selected environment, or null for the default deployment.
+export const ENV = envFromArgs();
+// Base of the Worker and D1 names.
+export const BASE_NAME = ENV ? `render-box-${ENV}` : "render-box";
+export const DB_NAME = BASE_NAME;
+export const CONFIG_NAME = ENV ? `render-box.${ENV}.deploy.json` : "render-box.deploy.json";
+const CONFIG_FILE = new URL(CONFIG_NAME, ROOT);
+// Appended to the commands we print, so they target the same environment.
+export const ENV_FLAG = ENV ? ` --env ${ENV}` : "";
 
 export const APPS = ["render", "admin", "api"] as const;
 export type App = (typeof APPS)[number];
@@ -26,9 +53,9 @@ export type DeployConfig = {
 };
 
 export const WORKER_NAMES: Record<App, string> = {
-  render: "render-box-render",
-  admin: "render-box-admin",
-  api: "render-box-api",
+  render: `${BASE_NAME}-render`,
+  admin: `${BASE_NAME}-admin`,
+  api: `${BASE_NAME}-api`,
 };
 
 export function hasDeployConfig() {
@@ -37,7 +64,7 @@ export function hasDeployConfig() {
 
 export function readDeployConfig(): DeployConfig {
   if (!hasDeployConfig()) {
-    throw new Error("render-box.deploy.json이 없습니다. 먼저 `pnpm setup:remote`를 실행하세요.");
+    throw new Error(`${CONFIG_NAME}이 없습니다. 먼저 \`pnpm setup:remote${ENV_FLAG}\`를 실행하세요.`);
   }
   return JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as DeployConfig;
 }
@@ -62,22 +89,29 @@ function setVar(toml: string, key: string, value: string): string {
   return toml.replace(/^\[vars\]\s*$/m, `[vars]\n${line}`);
 }
 
-export function writeWranglerConfigs(config: DeployConfig) {
+// The deploy config for one app: the committed wrangler.toml with this
+// environment's names, D1 and settings filled in.
+export function renderWranglerConfig(app: App, config: DeployConfig, toml: string): string {
   const origins = config.origins ?? workersDevOrigins("unknown");
+  toml = toml.replace(/^name\s*=.*$/m, `name = ${JSON.stringify(WORKER_NAMES[app])}`);
+  toml = toml.replace(/^database_name\s*=.*$/m, `database_name = ${JSON.stringify(DB_NAME)}`);
+  toml = toml.replace(/^database_id\s*=.*$/m, `database_id = ${JSON.stringify(config.databaseId)}`);
+  toml = setVar(toml, "APP_ORIGIN", origins.app);
+  toml = setVar(toml, "RENDER_ORIGIN", origins.render);
+  if (app === "api") toml = setVar(toml, "API_ORIGIN", origins.api);
+  if (app !== "render") {
+    if (config.storageLimitMb !== undefined) toml = setVar(toml, "STORAGE_LIMIT_MB", String(config.storageLimitMb));
+    if (config.storageWarnPercent !== undefined) toml = setVar(toml, "STORAGE_WARN_PERCENT", String(config.storageWarnPercent));
+  }
+  if (app === "admin" && config.helpUrl !== undefined) toml = setVar(toml, "HELP_URL", config.helpUrl);
+  if (app === "admin" && config.defaultProject !== undefined) toml = setVar(toml, "DEFAULT_PROJECT", config.defaultProject);
+  return `# Generated from wrangler.toml and ${CONFIG_NAME} by scripts/lib/remote.ts. Do not edit.\n` + toml;
+}
+
+export function writeWranglerConfigs(config: DeployConfig) {
   for (const app of APPS) {
-    let toml = readFileSync(new URL("wrangler.toml", appDir(app)), "utf8");
-    toml = toml.replace(/^database_id\s*=.*$/m, `database_id = ${JSON.stringify(config.databaseId)}`);
-    toml = setVar(toml, "APP_ORIGIN", origins.app);
-    toml = setVar(toml, "RENDER_ORIGIN", origins.render);
-    if (app === "api") toml = setVar(toml, "API_ORIGIN", origins.api);
-    if (app !== "render") {
-      if (config.storageLimitMb !== undefined) toml = setVar(toml, "STORAGE_LIMIT_MB", String(config.storageLimitMb));
-      if (config.storageWarnPercent !== undefined) toml = setVar(toml, "STORAGE_WARN_PERCENT", String(config.storageWarnPercent));
-    }
-    if (app === "admin" && config.helpUrl !== undefined) toml = setVar(toml, "HELP_URL", config.helpUrl);
-    if (app === "admin" && config.defaultProject !== undefined) toml = setVar(toml, "DEFAULT_PROJECT", config.defaultProject);
-    const header = "# Generated from wrangler.toml and render-box.deploy.json by scripts/lib/remote.ts. Do not edit.\n";
-    writeFileSync(new URL("wrangler.deploy.toml", appDir(app)), header + toml);
+    const toml = readFileSync(new URL("wrangler.toml", appDir(app)), "utf8");
+    writeFileSync(new URL("wrangler.deploy.toml", appDir(app)), renderWranglerConfig(app, config, toml));
   }
 }
 

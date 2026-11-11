@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { deployConfigArgs, readDeployConfig, wrangler, writeWranglerConfigs } from "./remote";
 
 const args = process.argv.slice(2);
-const VALUE_OPTIONS = new Set(["--name", "--role", "--project"]);
+const VALUE_OPTIONS = new Set(["--name", "--role", "--project", "--env"]);
 
 export const remote = args.includes("--remote");
 export const positional = args.filter((a, i) => !a.startsWith("--") && !VALUE_OPTIONS.has(args[i - 1] ?? ""));

@@ -924,7 +924,9 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 
 ## 9.3 배포 (로컬 검증 후)
 
-운영 설정은 저장소 밖에 둔다 ([decisions.md](decisions.md) D-36). 저장소의 `apps/*/wrangler.toml`에는 예시값만 있고, 실제 값은 `render-box.deploy.json`(git 제외)에 있다. 원격 명령은 이 둘로 만든 `apps/*/wrangler.deploy.toml`(git 제외)로 실행한다 (`scripts/lib/remote.ts`).
+운영 설정은 저장소 밖에 둔다 ([decisions.md](decisions.md) D-36).
+
+**환경 (`--env <이름>` 또는 `RB_ENV`):** 모든 원격 명령(`setup:remote`, `deploy:prod`, `db:migrate:remote`, `key`·`project --remote`, `check:headers`, `measure`)이 받는다. 이름이 있으면 Worker·D1 이름에 접두어(`render-box-<이름>-…`, D1 `render-box-<이름>`)를 붙이고 설정 파일도 `render-box.<이름>.deploy.json`을 쓴다. 이름이 고정이면 같은 계정에서 두 번째 `setup:remote`가 기존 D1을 찾아 쓰고 Worker를 덮어쓰기 때문이다. `pnpm teardown:remote --env <이름> --yes`가 그 환경의 Worker·D1·설정 파일을 지운다(기본 환경은 거절). 저장소의 `apps/*/wrangler.toml`에는 예시값만 있고, 실제 값은 `render-box.deploy.json`(git 제외)에 있다. 원격 명령은 이 둘로 만든 `apps/*/wrangler.deploy.toml`(git 제외)로 실행한다 (`scripts/lib/remote.ts`).
 
 처음 한 번: `pnpm setup:remote` (`scripts/setup-remote.ts`). 다시 실행해도 있는 것은 그대로 쓴다.
 

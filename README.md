@@ -79,6 +79,16 @@ pnpm key create --remote --name <이름> --project <slug> --role EDITOR
 | `pnpm project list` / `members <slug>` / `rename <slug> --name …` / `move <문서 키> <slug>` (`--remote`) | 프로젝트 목록·멤버·이름 바꾸기·문서 옮기기 |
 | `pnpm project delete <slug> --remote` | 프로젝트 지우기. 문서가 하나도 없을 때만 되고, 멤버 연결도 함께 지웁니다 |
 
+**같은 계정에 환경 더 두기:** 모든 원격 명령에 `--env <이름>`을 붙이면 Worker(`render-box-<이름>-admin` 등)와 D1(`render-box-<이름>`), 설정 파일(`render-box.<이름>.deploy.json`)이 따로 생겨 기존 배포를 건드리지 않습니다. `RB_ENV=<이름>`도 같습니다.
+
+```sh
+pnpm setup:remote --env staging
+pnpm project create demo --name Demo --remote --env staging
+pnpm key create --remote --env staging --name 테스트 --project demo --role EDITOR
+pnpm deploy:prod --env staging
+pnpm teardown:remote --env staging --yes      # 그 환경의 Worker·D1(문서 전부)·설정 파일 삭제. 기본 환경은 지우지 않음
+```
+
 `render-box.deploy.json`에서 바꿀 수 있는 값:
 
 | 키 | 기본값 | 설명 |

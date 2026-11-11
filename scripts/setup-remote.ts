@@ -1,7 +1,10 @@
 // First-time (and repeatable) production setup on your own Cloudflare account
 // (design.md 9.3). Safe to run again: it reuses what already exists.
 //
-//   pnpm setup:remote [--account <id>] [--subdomain <name>]
+//   pnpm setup:remote [--env <name>] [--account <id>] [--subdomain <name>]
+//
+// --env makes a separate deployment in the same account (Workers
+// render-box-<name>-*, D1 render-box-<name>, render-box.<name>.deploy.json).
 //
 // 1. Checks `wrangler login` and picks the account
 // 2. Finds or creates the D1 database "render-box"
@@ -10,6 +13,10 @@
 // 5. Applies migrations, deploys all Workers, runs the header checks
 import { randomBytes } from "node:crypto";
 import {
+  CONFIG_NAME,
+  DB_NAME,
+  ENV_FLAG,
+  WORKER_NAMES,
   deployAll,
   deployApp,
   deployConfigArgs,
@@ -23,7 +30,6 @@ import {
   type DeployConfig,
 } from "./lib/remote";
 
-const DB_NAME = "render-box";
 const args = process.argv.slice(2);
 const option = (name: string) => {
   const i = args.indexOf(`--${name}`);
@@ -35,6 +41,8 @@ function fail(message: string): never {
   process.exit(1);
 }
 const step = (message: string) => console.log(`\n▶ ${message}`);
+
+console.log(`환경: ${ENV_FLAG ? ENV_FLAG.trim() : "기본"} · Worker ${Object.values(WORKER_NAMES).join(", ")} · D1 ${DB_NAME} · 설정 ${CONFIG_NAME}`);
 
 // 1. Login and account
 step("Cloudflare 로그인 확인");
@@ -85,7 +93,7 @@ if (!config.origins) {
   if (!found) {
     fail(
       "workers.dev 주소를 알아내지 못했습니다. Cloudflare 대시보드 Workers 화면에서 서브도메인을 확인한 뒤 " +
-        "`pnpm setup:remote --subdomain <이름>`으로 다시 실행하세요.",
+        `\`pnpm setup:remote${ENV_FLAG} --subdomain <이름>\`으로 다시 실행하세요.`,
     );
   }
   config.origins = workersDevOrigins(found);
@@ -133,13 +141,13 @@ step("배포 (render → admin → api)");
 deployAll();
 
 step("배포 후 점검");
-run("pnpm", ["-s", "check:headers"]);
+run("pnpm", ["-s", "check:headers", ...(ENV_FLAG ? ENV_FLAG.trim().split(" ") : [])]);
 
 console.log(`
 ✓ 준비가 끝났습니다. 프로젝트와 첫 편집자 키를 만들고 ${config.origins.app} 에서 로그인하세요:
 
-  pnpm project create <slug> --name <이름> --remote
-  pnpm key create --remote --name <이름> --project <slug> --role EDITOR
+  pnpm project create <slug> --name <이름> --remote${ENV_FLAG}
+  pnpm key create --remote${ENV_FLAG} --name <이름> --project <slug> --role EDITOR
 
 모든 프로젝트를 관리할 키는 --project 대신 --admin으로 만듭니다.
 `);
