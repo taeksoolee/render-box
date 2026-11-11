@@ -1,5 +1,5 @@
 import { editsAny, type ActiveKey } from "@render-box/auth";
-import { htmlWarnings } from "@render-box/documents";
+import { htmlWarnings, type HtmlWarning } from "@render-box/documents";
 import { z } from "zod";
 import { createHtml, getHtml, listHtml, requireEditor, ServiceError, updateHtml, type Ctx, type HtmlInput } from "./service";
 
@@ -65,7 +65,7 @@ const toolMeta: Record<
   upload_html: {
     title: "HTML 올리기",
     description:
-      "HTML 문서를 render-box에 새로 올리고, 팀원이 새 창에서 볼 수 있는 렌더링 URL(render_url)을 돌려준다. 올린 뒤 render_url을 사용자에게 알려 준다. 결과에 warnings가 있으면 저장은 되었지만 그 부분이 동작하지 않으니, 내용대로 HTML을 고쳐 update_html로 다시 올린다.",
+      "HTML 문서를 render-box에 새로 올리고, 팀원이 새 창에서 볼 수 있는 렌더링 URL(render_url)을 돌려준다. 올린 뒤 render_url을 사용자에게 알려 준다. 결과에 warnings가 있으면 저장은 되었지만 그 부분이 동작하지 않으니, 사용자에게 알리고 내용대로 HTML을 고쳐 update_html로 다시 올린다.",
     editorOnly: true,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
@@ -175,8 +175,22 @@ function htmlStream(html: string): HtmlInput {
   return { body: new Response(bytes).body!, size: bytes.length };
 }
 
+// Warnings go first, as sentences, so they show in the chat and are not
+// lost in the JSON; the JSON still carries them for the AI.
 function result(data: Record<string, unknown>): ToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data };
+  const content: ToolResult["content"] = [];
+  const warnings = data.warnings as HtmlWarning[] | undefined;
+  if (warnings?.length) {
+    content.push({
+      type: "text",
+      text: [
+        "⚠ 저장은 했지만, 렌더링 화면에서 일부가 동작하지 않습니다. 사용자에게 알리고, 아래대로 HTML을 고쳐 update_html로 다시 올리세요.",
+        ...warnings.map((w) => `- ${w.message} (해당 코드: ${w.examples.join(", ")})`),
+      ].join("\n"),
+    });
+  }
+  content.push({ type: "text", text: JSON.stringify(data, null, 2) });
+  return { content, structuredContent: data };
 }
 
 function toolError(message: string): ToolResult {

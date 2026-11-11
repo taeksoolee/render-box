@@ -3,6 +3,7 @@ import type { DocumentFormErrors, DocumentFormValues, LinkRow } from "../lib/doc
 import { LIMITS } from "../lib/document-form";
 import { formatFullDate, formatSize } from "../lib/format";
 import { Alert, AppPage, BackLink } from "./layout";
+import { helpSection } from "./links";
 import { Icon } from "./icon";
 import * as ui from "./ui";
 
@@ -274,6 +275,16 @@ function HtmlInput({ mode, kept, error }: { mode: FormMode; kept: KeptUpload; er
       <div data-warnings hidden>
         <Alert kind="warning" title="저장은 할 수 있지만, 일부가 표시되지 않을 수 있습니다">
           <ul class="list-disc space-y-1 pl-4" data-warning-list></ul>
+          {helpSection("올릴-때-나오는-경고") ? (
+            <a
+              href={helpSection("올릴-때-나오는-경고")!}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mt-2 inline-block text-xs text-primary hover:underline"
+            >
+              경고 설명 보기<span class="sr-only"> (새 창)</span>
+            </a>
+          ) : null}
         </Alert>
       </div>
     </section>

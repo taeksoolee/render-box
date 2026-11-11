@@ -22,6 +22,7 @@ test("the upload form warns about direct iframe access and still saves", async (
   await expect(box).toContainText("AI에게 보낼 요청");
   await expect(box).toContainText("postMessage로 바꿔 줘");
   await expect(box).toContainText("고쳐야 할 코드: fr.contentDocument");
+  await expect(page.getByRole("link", { name: /경고 설명 보기/ })).toHaveAttribute("href", /guide\.md#올릴-때-나오는-경고$/);
   await page.screenshot({ path: test.info().outputPath("warning.png") });
   await box.getByRole("button", { name: "복사" }).click();
   await expect(box.getByRole("button")).toHaveText(/복사했습니다|선택해 두었습니다/);
@@ -57,7 +58,11 @@ test.describe("MCP", () => {
         params: { name: "upload_html", arguments: { project: "default", title: "MCP 경고", html } },
       }),
     });
-    return (await res.json()).result as { isError?: boolean; structuredContent: Record<string, unknown> };
+    return (await res.json()).result as {
+      isError?: boolean;
+      content: { type: string; text: string }[];
+      structuredContent: Record<string, unknown>;
+    };
   }
 
   test("upload_html saves and returns the warning for the AI to fix", async () => {
@@ -67,7 +72,11 @@ test.describe("MCP", () => {
     expect(result.structuredContent.warnings).toEqual([
       expect.objectContaining({ code: "frame_access", examples: ["fr.contentDocument"] }),
     ]);
+    // First in the result, as sentences, so it shows in the chat.
+    expect(result.content[0]!.text).toMatch(/^⚠ 저장은 했지만/);
+    expect(result.content[0]!.text).toContain("해당 코드: fr.contentDocument");
     const clean = await upload(withFrameAccess.replace("fr.contentDocument", "null"));
     expect(clean.structuredContent.warnings).toBeUndefined();
+    expect(clean.content).toHaveLength(1);
   });
 });
