@@ -926,7 +926,7 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 
 운영 설정은 저장소 밖에 둔다 ([decisions.md](decisions.md) D-36).
 
-**환경 (`--env <이름>` 또는 `RB_ENV`):** 모든 원격 명령(`setup:remote`, `deploy:prod`, `db:migrate:remote`, `key`·`project --remote`, `check:headers`, `measure`)이 받는다. 이름이 있으면 Worker·D1 이름에 접두어(`render-box-<이름>-…`, D1 `render-box-<이름>`)를 붙이고 설정 파일도 `render-box.<이름>.deploy.json`을 쓴다. 이름이 고정이면 같은 계정에서 두 번째 `setup:remote`가 기존 D1을 찾아 쓰고 Worker를 덮어쓰기 때문이다. 첫 `setup:remote`에 `--base-name <이름>`을 주면 접두어 대신 그 이름을 쓴다(다른 계정에 혼자 있는 환경을 `render-box-admin`처럼 두려고). 설정 파일에 `baseName`으로 남아 이후 명령은 `--env`만 주면 되고, 다른 `--base-name`은 거절한다. `pnpm teardown:remote --env <이름> --yes`가 그 환경의 Worker·D1·설정 파일을 지운다(기본 환경은 거절). 지우기 전에 `wrangler d1 export`로 D1을 `backups/<이름>-<시각>.sql`(git 제외)에 받고, 백업이 실패하면 아무것도 지우지 않는다(`--no-backup`으로 건너뜀). 되돌릴 때는 같은 이름의 D1을 만들어 그 파일을 `d1 execute --remote --file`로 넣고 `setup:remote`를 실행한다(마이그레이션 기록도 파일에 들어 있다). 저장소의 `apps/*/wrangler.toml`에는 예시값만 있고, 실제 값은 `render-box.deploy.json`(git 제외)에 있다. 원격 명령은 이 둘로 만든 `apps/*/wrangler.deploy.toml`(git 제외)로 실행한다 (`scripts/lib/remote.ts`).
+**환경 (`--env <이름>` 또는 `RB_ENV`):** 모든 원격 명령(`setup:remote`, `deploy:prod`, `db:migrate:remote`, `key`·`project --remote`, `check:headers`, `measure`)이 받는다. 이름이 있으면 Worker·D1 이름에 접두어(`render-box-<이름>-…`, D1 `render-box-<이름>`)를 붙이고 설정 파일도 `render-box.<이름>.deploy.json`을 쓴다. 이름이 고정이면 같은 계정에서 두 번째 `setup:remote`가 기존 D1을 찾아 쓰고 Worker를 덮어쓰기 때문이다. 첫 `setup:remote`에 `--base-name <이름>`을 주면 접두어 대신 그 이름을 쓴다(다른 계정에 혼자 있는 환경을 `render-box-admin`처럼 두려고). 설정 파일에 `baseName`으로 남아 이후 명령은 `--env`만 주면 되고, 다른 `--base-name`은 거절한다. `pnpm teardown:remote --env <이름> --yes`가 그 환경의 Worker·D1·설정 파일을 지운다(기본 환경은 거절). 지우기 전에 `wrangler d1 export`로 D1을 `backups/<이름>-<시각>.sql`(git 제외)에 받고, 백업이 실패하면 아무것도 지우지 않는다(`--no-backup`으로 건너뜀). 되돌릴 때는 같은 이름의 D1을 만들어 그 파일을 `d1 execute --remote --file`로 넣고 `setup:remote`를 실행한다(마이그레이션 기록도 파일에 들어 있다). 다른 계정에는 그 계정의 API 토큰(`Workers Scripts`·`D1` Edit)을 `.env.<이름>`(git 제외, `.env.example` 참고)에 두고 `(set -a; . ./.env.<이름>; pnpm … --env <이름>)`으로 실행한다. wrangler는 `CLOUDFLARE_API_TOKEN`을 로그인보다 먼저 쓴다. 저장소의 `apps/*/wrangler.toml`에는 예시값만 있고, 실제 값은 `render-box.deploy.json`(git 제외)에 있다. 원격 명령은 이 둘로 만든 `apps/*/wrangler.deploy.toml`(git 제외)로 실행한다 (`scripts/lib/remote.ts`).
 
 처음 한 번: `pnpm setup:remote` (`scripts/setup-remote.ts`). 다시 실행해도 있는 것은 그대로 쓴다.
 
@@ -1099,7 +1099,7 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 | 2 | `pnpm project create demo --name Demo --remote --env staging` | 만들어짐. 출력된 다음 명령에 `--remote --env staging`이 붙어 있음 |
 | 3 | `pnpm key create --remote --env staging --name 시험 --project demo --role EDITOR` | 키 출력 |
 | 4 | 그 키로: REST `POST /api/v1/html` → 관리 화면 로그인 → 렌더링 주소 열기 | 201, 프로젝트 `demo`. 로그인하면 Demo 목록과 올린 문서. 렌더링 주소에서 내용이 보임(새 시크릿으로 핸드오프 성공) |
-| 5 | `pnpm teardown:remote --env staging --yes` | Worker 3개·D1·설정 파일 삭제. staging 주소 404, `d1 list`에 운영 `render-box`만, 운영 `/healthz` 200, 운영 프로젝트·문서 그대로 |
+| 5 | `pnpm teardown:remote --env staging --yes` | 먼저 `backups/staging-<시각>.sql`이 생김(문서·키가 들어 있으니 확인 뒤 지움). Worker 3개·D1·설정 파일 삭제. staging 주소 404, `d1 list`에 운영 `render-box`만, 운영 `/healthz` 200, 운영 프로젝트·문서 그대로 |
 
 - **마지막 실행:** 2026-11-11, 전 단계 통과. 2단계에서 출력된 다음 명령에 `--remote --env`가 빠지는 문제를 찾아 고쳤다(`276c745`).
 - 4단계는 Playwright로 해도 된다(키로 로그인 → `[data-project]`, 목록, 렌더링 `#v`). 버리는 환경이므로 데이터를 만들어도 된다.

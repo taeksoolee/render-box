@@ -90,6 +90,16 @@ pnpm deploy:prod --env staging
 pnpm teardown:remote --env staging --yes      # 먼저 D1을 backups/<환경>-<시각>.sql로 내보낸 뒤 Worker·D1·설정 파일 삭제. 기본 환경은 지우지 않음
 ```
 
+**다른 Cloudflare 계정에 배포하기:** 그 계정의 API 토큰을 환경별 파일에 넣고, 명령을 그 파일과 함께 실행합니다. 토큰은 대시보드 **Manage Account**(또는 My Profile) → **API Tokens** → **Create Token** → 템플릿 **Edit Cloudflare Workers** → **+ Add more**로 `Account` · `D1` · `Edit` 한 줄 추가 → 그 계정만 고르고 만듭니다.
+
+```sh
+cp .env.example .env.client-a        # CLOUDFLARE_API_TOKEN=... 를 채움 (.env.* 는 git 제외)
+(set -a; . ./.env.client-a; pnpm setup:remote --env client-a --base-name render-box --account <계정 ID>)
+(set -a; . ./.env.client-a; pnpm key create --remote --env client-a --name admin --admin)
+```
+
+괄호 안에서만 토큰이 쓰이므로 다른 명령은 원래 로그인한 계정으로 돕니다. 토큰이나 생성된 키를 AI 대화창에 붙여 넣지 마세요(키를 만드는 명령은 일반 터미널에서).
+
 `render-box.deploy.json`에서 바꿀 수 있는 값:
 
 | 키 | 기본값 | 설명 |
