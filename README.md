@@ -102,6 +102,18 @@ pnpm teardown:remote --env staging --yes      # 그 환경의 Worker·D1(문서 
 
 바꾼 뒤 `pnpm deploy:prod`로 다시 배포하면 반영됩니다.
 
+### AI에게 맡기기
+
+배포 절차는 [docs/design.md](docs/design.md)(9.3 배포, 10.7 배포 시험)에 있어서, 저장소를 받은 뒤 Claude Code 같은 AI 도구에 이렇게 말하면 됩니다.
+
+| 하려는 일 | 이렇게 말하세요 |
+| --- | --- |
+| 처음 배포 | "design.md 내용 참고해서 배포해 줘" |
+| 업데이트 배포 | "design.md 내용 참고해서 업데이트 배포해 줘" (새 마이그레이션이 있으면 먼저 적용합니다) |
+| 배포 스크립트를 바꾼 뒤 확인 | "design.md 내용 참고해서 배포 시험해 줘" (같은 계정에 `--env staging`으로 만들었다 지웁니다) |
+
+사람이 해야 하는 일은 두 가지입니다: Cloudflare 로그인 승인(`wrangler login`, 브라우저)과, `pnpm key create`가 한 번만 보여 주는 키 받기. 운영에 실제로 반영되는 명령은 AI가 대신 실행하지 않고 실행할 명령을 알려 주게 해 두면 안전합니다.
+
 ## 사용 안내
 
 - [사용 안내 (docs/guide.md)](docs/guide.md) — 로그인, 올리기, 공유, 버전, 저장 공간. 관리 화면의 **도움말**이 이 문서로 연결됩니다.
