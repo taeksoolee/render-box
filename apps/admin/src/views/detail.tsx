@@ -91,7 +91,7 @@ export function DetailPage({
   const url = `${renderOrigin}/${doc.documentKey}`;
   const editor = project.role === "EDITOR";
   return (
-    <AppPage title={doc.title} user={user} project={project}>
+    <AppPage title={doc.title} user={user} project={project} width="max-w-5xl">
       <div class="space-y-8">
         <div class="space-y-4">
           <BackLink href={`/html?project=${encodeURIComponent(project.slug)}`}>{project.name} 목록</BackLink>
@@ -154,6 +154,10 @@ export function DetailPage({
           {saved ? null : <CopyFallback />}
         </section>
 
+        {/* From lg: the description and links beside a sidebar with the facts
+            and source; the versions span both. Phones keep the same order. */}
+        <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div class="min-w-0 space-y-8">
         <section>
           <h2 class={ui.h2}>설명</h2>
           {doc.description ? (
@@ -186,7 +190,9 @@ export function DetailPage({
             <p class="mt-2 text-fg-subtle">관련 링크가 없습니다.</p>
           )}
         </section>
+        </div>
 
+        <div class="space-y-8">
         <section>
           <h2 class={ui.h2}>정보</h2>
           <dl class="mt-2 grid grid-cols-[5rem_1fr] gap-x-4 gap-y-2 text-sm">
@@ -207,7 +213,7 @@ export function DetailPage({
 
         <section>
           <h2 class={ui.h2}>소스</h2>
-          <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+          <div class="mt-2 flex flex-col gap-2 sm:flex-row lg:flex-col">
             <a href={`/html/${doc.documentKey}/source`} target="_blank" rel="noopener" class={ui.secondary}>
               소스 보기
               <Icon name="external-link" />
@@ -217,6 +223,8 @@ export function DetailPage({
             </a>
           </div>
         </section>
+        </div>
+        </div>
 
         <Versions doc={doc} versions={versions} user={user} editor={editor} renderOrigin={renderOrigin} />
 

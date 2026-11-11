@@ -93,7 +93,7 @@ export function StoragePage({
   const level = storageLevel(usage);
   const current = Math.max(0, usage.used - usage.previous);
   return (
-    <AppPage title="저장 공간" user={user} project={project}>
+    <AppPage title="저장 공간" user={user} project={project} width="max-w-5xl">
       <div class="space-y-8">
         <div class="space-y-4">
           <BackLink href="/html">목록</BackLink>
@@ -107,6 +107,9 @@ export function StoragePage({
         <section class="space-y-3">
           <h1 class="text-xl font-semibold">저장 공간</h1>
           <div class={`${ui.card} space-y-3`}>
+            {/* From lg: totals beside the per-project usage. */}
+            <div class="grid gap-3 lg:grid-cols-2 lg:gap-8">
+            <div class="space-y-3">
             <p class="flex items-baseline justify-between gap-2">
               <span class="text-2xl font-semibold tabular-nums">{formatSize(usage.used)}</span>
               <span class="text-sm text-fg-muted tabular-nums">/ {formatSize(usage.limit)}</span>
@@ -118,8 +121,11 @@ export function StoragePage({
               <dt class="text-fg-subtle">이전 버전</dt>
               <dd class="text-right tabular-nums">{formatSize(usage.previous)}</dd>
             </dl>
+            </div>
             {byProject.length > 0 ? (
-              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t border-line pt-3 text-sm" aria-label="프로젝트별 사용량">
+              <div class="space-y-2 border-t border-line pt-3 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+              <p class="text-xs font-medium text-fg-muted">프로젝트별</p>
+              <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" aria-label="프로젝트별 사용량">
                 {byProject.map((p) => (
                   <>
                     <dt class="text-fg-subtle">{p.project.name}</dt>
@@ -127,7 +133,9 @@ export function StoragePage({
                   </>
                 ))}
               </dl>
+              </div>
             ) : null}
+            </div>
             <p class={ui.hint}>
               {level === "full"
                 ? "가득 차서 새로 올리기와 HTML 교체가 막혀 있습니다. 이전 버전이나 안 쓰는 문서를 지우면 다시 올릴 수 있습니다."
