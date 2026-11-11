@@ -99,10 +99,11 @@ test.describe("prefetch", () => {
     const fetched: string[] = [];
     page.on("request", (r) => r.url() === detail && fetched.push(r.method()));
 
-    // Just outside the row (the click area), inside the 32px margin.
+    // 48px above the row (the click area): outside a 32px margin, inside
+    // the 64px one.
     const box = (await row.boundingBox())!;
-    await page.mouse.move(box.x + 100, box.y - 6);
-    await page.mouse.move(box.x + 102, box.y - 6);
+    await page.mouse.move(box.x + 100, box.y - 48);
+    await page.mouse.move(box.x + 102, box.y - 48);
     await expect.poll(() => fetched.length).toBe(1);
 
     await mark(page);

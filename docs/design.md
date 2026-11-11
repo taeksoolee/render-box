@@ -852,7 +852,7 @@ Strict-Transport-Security: max-age=31536000
 - **boost 범위:** `<body>` 안 `[data-boost-root]` 래퍼에 `hx-boost`를 둔다. 본문만 바뀌고 `<body>`는 남으므로 페이지마다 래퍼 값으로 켜고 끈다. 로그인·업로드 폼은 `false`, 업로드 폼·다운로드로 가는 링크도 `hx-boost="false"`.
 - **목록 조각과 구분:** boost된 이동도 `HX-Request`를 보낸다. 목록 조각은 `HX-Request`이면서 `HX-Boosted`가 아닐 때만 준다.
 - **app.js:** 초기화는 다시 실행해도 같도록(요소마다 표시) 하고, boost 뒤(`htmx:afterSettle`, `detail.boosted`)에 다시 돌린다. 처음 불러온 기록 항목에 `{htmx: true}`를 넣어 뒤로 가기가 새로 불러오게 한다.
-- **프리페치:** D-39. 링크 영역(행 링크는 `[data-prefetch-area]`)에서 32px 안에 80ms 머물면 받는다. `[data-no-prefetch]`(프로젝트 메뉴)는 제외.
+- **프리페치:** D-39. 링크 영역(행 링크는 `[data-prefetch-area]`)에서 64px 안에 들어오면 받는다(머무는 시간 10ms, 마우스 위치는 40ms마다 확인, 동시에 둘까지). `[data-no-prefetch]`(프로젝트 메뉴)는 제외.
 - 검색 입력: `hx-get="/html" hx-trigger="input changed delay:300ms" hx-target="#list" hx-push-url="true" hx-sync="this:replace"`
 
 ## 8.2 JavaScript

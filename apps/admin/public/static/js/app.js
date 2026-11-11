@@ -712,12 +712,14 @@
   // Fetches a boosted link's page as soon as the pointer is near it, so the
   // click shows it at once. "Near" is the link's click area (or the whole row
   // for row links, [data-prefetch-area]) grown by PREFETCH_MARGIN, held for
-  // PREFETCH_DWELL so passing over a list does not fetch every row. Keyboard
+  // PREFETCH_DWELL. Keyboard
   // focus, touch and mousedown fetch right away. Pages are no-store, so the
   // browser cache cannot hold them; this keeps them in memory for a short
   // while and swaps them in itself.
-  var PREFETCH_MARGIN = 32;
-  var PREFETCH_DWELL = 80;
+  var PREFETCH_MARGIN = 64;
+  // Pointer moves are sampled every 40ms, so this is close to "on entering":
+  // PREFETCH_MAX_INFLIGHT is what keeps a fast sweep over a list in check.
+  var PREFETCH_DWELL = 10;
   var PREFETCH_TTL = 20000;
   var PREFETCH_MAX_INFLIGHT = 2;
   var prefetched = {}; // url -> { at, promise, page }
