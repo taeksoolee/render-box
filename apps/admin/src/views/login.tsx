@@ -56,7 +56,7 @@ export function LoginPage({ next, error }: { next: string | null; error?: string
                 <span>{error}</span>
               </p>
             ) : null}
-            <button type="submit" class={`${ui.primary} mt-4 w-full`} data-busy-label="로그인하는 중…">
+            <button type="submit" class={`${ui.primary} mt-4 w-full`} data-busy-label="키 확인 중…">
               로그인
             </button>
           </form>
