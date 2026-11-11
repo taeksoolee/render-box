@@ -70,6 +70,7 @@ pnpm key create --remote --name <이름> --project <slug> --role EDITOR
 | 명령 | 설명 |
 | --- | --- |
 | `pnpm db:migrate:remote` → `pnpm deploy:prod` → `pnpm check:headers` | 업데이트 배포와 점검. 새 마이그레이션이 있으면 반드시 먼저 |
+| (배포 스크립트·마이그레이션을 바꿨을 때) | 같은 계정에 `--env staging`으로 만들었다 지우는 배포 시험: [design.md 10.7](docs/design.md) |
 | `pnpm measure` (`RB_KEY=…`이면 로그인 화면도) | 운영 응답 시간과 Cloudflare 실행 위치(`cf-placement`) 측정 |
 | `pnpm key create --remote --name <이름> --project <slug> --role EDITOR\|VIEWER` | 키 발급. 키 원문은 이때 한 번만 보입니다. AI 도구(MCP)용 키는 로그인 키와 따로 발급하길 권합니다 (`--name 홍길동-mcp`) |
 | `pnpm key list --remote` / `revoke <prefix> --remote` | 키 목록(관리자 여부, 속한 프로젝트와 역할)·회수 |

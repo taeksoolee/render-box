@@ -1089,6 +1089,21 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 - **운영:** 배포 후 Workers 대시보드에서 요청별 CPU 시간 지표로 같은 항목을 확인한다.
 - **판정:** 10MB가 한도 안이면 최대 크기를 10MB로 확정한다. 한도를 넘으면 한도 안에 드는 크기로 최대 크기를 낮추고 [prd.md](prd.md)에 반영한다.
 
+## 10.7 배포 시험 (staging)
+
+`pnpm setup:remote`를 고치거나, 마이그레이션·Worker 설정·바인딩을 바꿨을 때 돌린다. 같은 계정에 따로 환경을 만들었다가 지우므로 운영은 건드리지 않는다 (9.3 환경). 원격 명령은 사람이 실행한다.
+
+| 단계 | 명령 | 확인할 것 |
+| --- | --- | --- |
+| 1 | `pnpm setup:remote --env staging` | D1 생성, workers.dev 주소, `HANDOFF_SECRET` 등록, 마이그레이션 전부 ✅, 배포, 점검 전부 ok. 빈 `default` 프로젝트가 지워짐(`pnpm project list --remote --env staging`이 비어 있음) |
+| 2 | `pnpm project create demo --name Demo --remote --env staging` | 만들어짐. 출력된 다음 명령에 `--remote --env staging`이 붙어 있음 |
+| 3 | `pnpm key create --remote --env staging --name 시험 --project demo --role EDITOR` | 키 출력 |
+| 4 | 그 키로: REST `POST /api/v1/html` → 관리 화면 로그인 → 렌더링 주소 열기 | 201, 프로젝트 `demo`. 로그인하면 Demo 목록과 올린 문서. 렌더링 주소에서 내용이 보임(새 시크릿으로 핸드오프 성공) |
+| 5 | `pnpm teardown:remote --env staging --yes` | Worker 3개·D1·설정 파일 삭제. staging 주소 404, `d1 list`에 운영 `render-box`만, 운영 `/healthz` 200, 운영 프로젝트·문서 그대로 |
+
+- **마지막 실행:** 2026-11-11, 전 단계 통과. 2단계에서 출력된 다음 명령에 `--remote --env`가 빠지는 문제를 찾아 고쳤다(`276c745`).
+- 4단계는 Playwright로 해도 된다(키로 로그인 → `[data-project]`, 목록, 렌더링 `#v`). 버리는 환경이므로 데이터를 만들어도 된다.
+
 ---
 
 # 11. API 서버 (`apps/api`): MCP와 REST
