@@ -13,13 +13,17 @@ export const ROLE_LABEL = { EDITOR: "편집자", VIEWER: "열람자" } as const;
 // body's content but keeps the <body> element, so a page that must not be
 // boosted (login, the upload form) sets boost={false} on its own wrapper.
 // History is not cached in localStorage (pages hold CSRF tokens and documents);
-// Back reloads. Error pages are swapped in like any other page.
+// app.js keeps a few pages in memory instead. Error pages are swapped in like
+// any other page.
 const HTMX_CONFIG = JSON.stringify({
   allowEval: false,
   includeIndicatorStyles: false,
   selfRequestsOnly: true,
+  // Back/Forward: app.js keeps recent pages in memory and restores them; on a
+  // miss htmx loads the page's body from the server (no full reload).
   historyCacheSize: 0,
-  refreshOnHistoryMiss: true,
+  refreshOnHistoryMiss: false,
+  historyRestoreAsHxRequest: false,
   responseHandling: [
     { code: "204", swap: false },
     { code: "...", swap: true },
@@ -47,6 +51,7 @@ export function Document({ title, boost = true, children }: { title: string; boo
           <script src={asset("js/app.js")} defer></script>
         </head>
         <body>
+          <div class="nav-progress" data-nav-progress aria-hidden="true"></div>
           <div hx-boost={boost ? "true" : "false"} data-boost-root>
             <a
               href="#main"

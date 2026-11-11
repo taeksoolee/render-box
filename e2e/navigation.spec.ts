@@ -24,7 +24,7 @@ async function listWith(page: Page, title: string) {
   return page.locator("table tbody tr", { hasText: title });
 }
 
-test("links swap the page without a full load; Back reloads", async ({ page }) => {
+test("links swap the page without a full load; Back stays in the page", async ({ page }) => {
   const title = `부스트 ${Date.now()}`;
   const docKey = await upload(title);
   await login(page, "EDITOR");
@@ -37,11 +37,11 @@ test("links swap the page without a full load; Back reloads", async ({ page }) =
   expect(await marked(page)).toBe(true);
   await expect(page.locator("#main")).toBeFocused();
 
-  // No history cache: Back loads the list page again.
+  // Back restores the list in the same page (memory cache, see below).
   await page.goBack();
   await expect(page).toHaveURL(/\/html\?project=default/);
   await expect(page.locator("table tbody tr", { hasText: title })).toBeVisible();
-  expect(await marked(page)).toBe(false);
+  expect(await marked(page)).toBe(true);
 });
 
 test("the upload form is a full load (its JS binds window listeners)", async ({ page }) => {
@@ -128,5 +128,73 @@ test.describe("prefetch", () => {
     await page.locator("header").hover();
     await page.waitForTimeout(300);
     expect(projectRequests).toEqual([]);
+  });
+});
+
+test.describe("history and feedback", () => {
+  test("Back and Forward come from memory without a request", async ({ page }) => {
+    const title = `뒤로 ${Date.now()}`;
+    const docKey = await upload(title);
+    await login(page, "EDITOR");
+    const row = await listWith(page, title);
+    await page.evaluate(() => window.scrollTo(0, 40));
+    await mark(page);
+    await row.getByRole("link", { name: title, exact: true }).click();
+    await expect(page).toHaveURL(`${APP}/html/${docKey}`);
+
+    // History requests only: a history restore from the server, or a full
+    // load. (Prefetches may happen: the restored row can land under the mouse.)
+    const documents: string[] = [];
+    page.on("request", (r) => {
+      if (r.headers()["hx-history-restore-request"] || r.resourceType() === "document") documents.push(r.url());
+    });
+    await page.goBack();
+    await expect(page).toHaveURL(/\/html\?project=default&q=/);
+    await expect(page.locator("table tbody tr", { hasText: title })).toBeVisible();
+    await page.goForward();
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    expect(documents).toEqual([]);
+    expect(await marked(page)).toBe(true);
+    // The restored page is live: its copy button and forms are bound again.
+    await page.goBack();
+    await expect(page.locator("table tbody tr", { hasText: title })).toBeVisible();
+    await page.getByRole("link", { name: title, exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+  });
+
+  test("after a change, Back asks the server but still swaps without a reload", async ({ page }) => {
+    const title = `변경 후 ${Date.now()}`;
+    const docKey = await upload(title);
+    await login(page, "EDITOR");
+    await listWith(page, title);
+    await page.getByRole("link", { name: title, exact: true }).click();
+    await expect(page).toHaveURL(`${APP}/html/${docKey}`);
+    await mark(page);
+    // A data change (here: deleting a version-less document is too final; use
+    // a no-op restore of the current version, a boosted POST) empties memory.
+    await page.evaluate(() => document.dispatchEvent(new Event("submit")));
+    const lists: string[] = [];
+    page.on("request", (r) => r.url().includes("/html?project=default") && lists.push(r.url()));
+    await page.goBack();
+    await expect(page.locator("table tbody tr", { hasText: title })).toBeVisible();
+    expect(lists.length).toBe(1);
+    expect(await marked(page)).toBe(true);
+  });
+
+  test("a slow page shows the progress bar and keeps the pressed row highlighted", async ({ page }) => {
+    const title = `느린 페이지 ${Date.now()}`;
+    const docKey = await upload(title);
+    await login(page, "EDITOR");
+    const row = await listWith(page, title);
+    await page.route(`${APP}/html/${docKey}`, async (route) => {
+      await new Promise((r) => setTimeout(r, 700));
+      await route.continue();
+    });
+    await row.getByRole("link", { name: title, exact: true }).click();
+    await expect(page.locator('[data-nav-progress][data-active="true"]')).toHaveCount(1);
+    await expect(row).toHaveAttribute("data-pending", "true");
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await expect(page.locator('[data-nav-progress][data-active="true"]')).toHaveCount(0);
+    await expect(page.locator('[data-pending="true"]')).toHaveCount(0);
   });
 });

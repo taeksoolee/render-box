@@ -848,7 +848,9 @@ Strict-Transport-Security: max-age=31536000
 
 - 2.x 버전을 정적 파일로 자체 호스팅한다.
 - 목록 검색과 페이지네이션, 그리고 **페이지 이동(hx-boost)**에 쓴다. 등록·수정·삭제의 서버 처리는 일반 폼과 PRG 그대로다 ([decisions.md](decisions.md) D-12, D-39).
-- 설정 (`layout.tsx`): `allowEval: false`, `includeIndicatorStyles: false`, `selfRequestsOnly: true`, `historyCacheSize: 0` + `refreshOnHistoryMiss: true`(문서·CSRF 토큰을 localStorage에 남기지 않고 뒤로 가기는 새로 불러옴), `responseHandling`으로 4xx·5xx도 화면에 반영
+- 설정 (`layout.tsx`): `allowEval: false`, `includeIndicatorStyles: false`, `selfRequestsOnly: true`, `historyCacheSize: 0`(문서·CSRF 토큰을 localStorage에 남기지 않음) + `refreshOnHistoryMiss: false`·`historyRestoreAsHxRequest: false`(메모리에 없으면 본문만 서버에서), `responseHandling`으로 4xx·5xx도 화면에 반영
+- **뒤로·앞으로 (app.js "history"):** 떠나는 boost 페이지를 메모리에 최근 10개·10분 둔다. `htmx:historyCacheMiss`를 취소하고 메모리 사본을 넣는다. 데이터를 바꾸는 요청 뒤에는 비운다. 목록 라우트는 `HX-History-Restore-Request`도 전체 페이지로 응답한다.
+- **즉시 반응 (app.js "feedback"):** 80ms 넘게 걸리는 이동에 상단 진행 막대(`[data-nav-progress]`), 누른 행에 `data-pending`.
 - **boost 범위:** `<body>` 안 `[data-boost-root]` 래퍼에 `hx-boost`를 둔다. 본문만 바뀌고 `<body>`는 남으므로 페이지마다 래퍼 값으로 켜고 끈다. 로그인·업로드 폼은 `false`, 업로드 폼·다운로드로 가는 링크도 `hx-boost="false"`.
 - **목록 조각과 구분:** boost된 이동도 `HX-Request`를 보낸다. 목록 조각은 `HX-Request`이면서 `HX-Boosted`가 아닐 때만 준다.
 - **app.js:** 초기화는 다시 실행해도 같도록(요소마다 표시) 하고, boost 뒤(`htmx:afterSettle`, `detail.boosted`)에 다시 돌린다. 처음 불러온 기록 항목에 `{htmx: true}`를 넣어 뒤로 가기가 새로 불러오게 한다.

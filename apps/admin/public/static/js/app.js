@@ -32,9 +32,14 @@
   }
 
   // Runs again after every hx-boost swap, so each binder marks what it bound.
+  // A WeakMap, not data-* attributes: pages restored from the history cache
+  // are new elements made from saved HTML and must be bound again.
+  var bound = new WeakMap();
   function once(el, key) {
-    if (el.dataset["rb" + key]) return false;
-    el.dataset["rb" + key] = "1";
+    var keys = bound.get(el);
+    if (!keys) bound.set(el, (keys = {}));
+    if (keys[key]) return false;
+    keys[key] = true;
     return true;
   }
 
@@ -684,11 +689,18 @@
     initCleanUrl();
   }
 
+  function boostedPage() {
+    var root = $("[data-boost-root]");
+    return !!root && root.getAttribute("hx-boost") === "true";
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
-    // Mark the fully loaded entry as htmx's: otherwise Back to it after a
-    // boosted swap would change only the URL and keep the swapped page. htmx
-    // then finds no cached copy (historyCacheSize 0) and reloads it.
-    if (!(history.state && history.state.htmx)) history.replaceState({ htmx: true }, "", location.href);
+    // Mark a fully loaded boosted page's entry as htmx's: otherwise Back to it
+    // after a boosted swap would change only the URL and keep the swapped page.
+    // Pages that are not boosted (login, upload form) are left alone: they are
+    // always entered and left with full loads.
+    if (boostedPage() && !(history.state && history.state.htmx)) history.replaceState({ htmx: true }, "", location.href);
+    currentKey = pageKey();
     initFocus();
     initPage();
     initDocumentForm();
@@ -697,6 +709,8 @@
   // After a boosted page swap (hx-boost, or a prefetched page), bind the new
   // content and move focus to it so screen readers land on the new page.
   function afterPageSwap() {
+    currentKey = pageKey();
+    stopProgress();
     initPage();
     var target = $('[data-autofocus="true"]') || $("#main");
     if (target) target.focus({ preventScroll: true });
@@ -705,6 +719,123 @@
   document.addEventListener("htmx:afterSettle", function (e) {
     if (e.detail && e.detail.boosted) afterPageSwap();
     else initPage(); // search and paging swap #list only
+  });
+
+  // ---------------------------------------------------------- feedback
+
+  // A thin bar at the top while a page loads, shown only if it takes longer
+  // than PROGRESS_DELAY so instant swaps do not flash it. The pressed row
+  // stays highlighted until the new page replaces it.
+  var PROGRESS_DELAY = 80;
+  var progressTimer = null;
+  function startProgress(link) {
+    if (link) {
+      var area = link.closest("[data-prefetch-area]");
+      if (area) area.dataset.pending = "true";
+    }
+    clearTimeout(progressTimer);
+    progressTimer = setTimeout(function () {
+      var bar = $("[data-nav-progress]");
+      if (bar) bar.dataset.active = "true";
+    }, PROGRESS_DELAY);
+  }
+  function stopProgress() {
+    clearTimeout(progressTimer);
+    var bar = $("[data-nav-progress]");
+    if (bar) delete bar.dataset.active;
+    $$('[data-pending="true"]').forEach(function (el) {
+      delete el.dataset.pending;
+    });
+  }
+  document.addEventListener("htmx:beforeRequest", function (e) {
+    if (e.detail && e.detail.boosted) startProgress(e.detail.elt instanceof HTMLAnchorElement ? e.detail.elt : null);
+  });
+  ["htmx:responseError", "htmx:sendError", "htmx:timeout", "htmx:historyCacheMissLoadError"].forEach(function (name) {
+    document.addEventListener(name, stopProgress);
+  });
+  // Full page loads (not boosted links, plain forms): the bar until unload.
+  document.addEventListener("click", function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target instanceof Element ? e.target.closest("a[href]") : null;
+    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
+    var url = new URL(a.href, location.href);
+    if (url.origin !== location.origin || (url.pathname === location.pathname && url.hash)) return;
+    var boost = a.closest("[hx-boost]");
+    if (!boost || boost.getAttribute("hx-boost") !== "true") startProgress(a);
+  });
+  document.addEventListener("submit", function (e) {
+    var boost = e.target instanceof Element ? e.target.closest("[hx-boost]") : null;
+    if (!e.defaultPrevented && (!boost || boost.getAttribute("hx-boost") !== "true")) startProgress(null);
+  });
+  window.addEventListener("pageshow", stopProgress);
+
+  // ---------------------------------------------------------- history
+
+  // Back/Forward show the page as it was, from memory, without a request.
+  // Memory only (never localStorage: pages hold CSRF tokens and documents), so
+  // it is gone on reload. Anything that changes data empties it; on a miss
+  // htmx loads the page's body from the server.
+  var HISTORY_MAX = 10;
+  var HISTORY_TTL = 10 * 60 * 1000;
+  var pages = {}; // key -> { html, title, scroll, at }
+  var currentKey = null;
+
+  function pageKey() {
+    return location.pathname + location.search;
+  }
+
+  function snapshot() {
+    if (!currentKey || !boostedPage()) return;
+    $$(".htmx-request").forEach(function (el) {
+      el.classList.remove("htmx-request");
+    });
+    stopProgress();
+    pages[currentKey] = { html: document.body.innerHTML, title: document.title, scroll: window.scrollY, at: Date.now() };
+    var keys = Object.keys(pages).sort(function (a, b) {
+      return pages[a].at - pages[b].at;
+    });
+    while (keys.length > HISTORY_MAX) delete pages[keys.shift()];
+  }
+
+  function forgetPages() {
+    pages = {};
+  }
+
+  // The key must follow the DOM, not the settle: Back right after a click can
+  // come before htmx:afterSettle, and the snapshot would land under the old key.
+  document.addEventListener("htmx:afterSwap", function (e) {
+    var xhr = e.detail && e.detail.boosted && e.detail.xhr;
+    if (xhr && xhr.responseURL) {
+      var u = new URL(xhr.responseURL);
+      currentKey = u.pathname + u.search;
+    }
+  });
+
+  // Leaving a page by a boosted link: keep it for Back.
+  document.addEventListener("htmx:beforeRequest", function (e) {
+    var cfg = e.detail && e.detail.requestConfig;
+    if (e.detail && e.detail.boosted && cfg && cfg.verb === "get") snapshot();
+  });
+
+  // htmx found nothing in its own (disabled) cache: restore from memory and
+  // cancel its server request, or let it load the body from the server.
+  document.addEventListener("htmx:historyCacheMiss", function (e) {
+    var key = e.detail.path;
+    var page = pages[key];
+    snapshot(); // the page being left, for Forward
+    if (!page || Date.now() - page.at > HISTORY_TTL) {
+      startProgress(null);
+      return;
+    }
+    e.preventDefault();
+    document.title = page.title;
+    currentKey = key;
+    window.htmx.swap(document.body, page.html, { swapStyle: "innerHTML" });
+    window.scrollTo(0, page.scroll);
+    afterPageSwap();
+  });
+  document.addEventListener("htmx:historyRestore", function () {
+    afterPageSwap();
   });
 
   // ---------------------------------------------------------- prefetch
@@ -780,7 +911,9 @@
       return;
     }
     var u = new URL(page.url);
+    snapshot();
     history.pushState({ htmx: true }, "", u.pathname + u.search + u.hash);
+    currentKey = u.pathname + u.search;
     document.title = doc.title;
     window.htmx.swap(document.body, doc.body.innerHTML, { swapStyle: "innerHTML" });
     window.scrollTo(0, 0);
@@ -802,6 +935,7 @@
       if (!hit || Date.now() - hit.at > PREFETCH_TTL) return; // htmx fetches it
       e.preventDefault();
       e.stopImmediatePropagation();
+      if (!hit.page) startProgress(a); // still loading
       var hash = new URL(a.href).hash;
       hit.promise.then(
         function (page) {
@@ -821,10 +955,14 @@
   // Anything that changed data makes the prefetched pages stale.
   document.addEventListener("htmx:afterRequest", function (e) {
     var verb = e.detail && e.detail.requestConfig && e.detail.requestConfig.verb;
-    if (verb && verb !== "get") prefetched = {};
+    if (verb && verb !== "get") {
+      prefetched = {};
+      forgetPages();
+    }
   });
   document.addEventListener("submit", function () {
     prefetched = {};
+    forgetPages();
   });
 
   function areaOf(a) {

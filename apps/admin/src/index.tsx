@@ -251,9 +251,12 @@ app.get("/html", requireLogin, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
   const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
   const project = currentProject(c);
-  // Search and paging swap only the list; boosted navigation (hx-boost) also
-  // sends HX-Request but needs the whole page.
-  const htmx = c.req.header("HX-Request") === "true" && c.req.header("HX-Boosted") !== "true";
+  // Search and paging swap only the list; boosted navigation and history
+  // restores (hx-boost) can send HX-Request too but need the whole page.
+  const htmx =
+    c.req.header("HX-Request") === "true" &&
+    c.req.header("HX-Boosted") !== "true" &&
+    c.req.header("HX-History-Restore-Request") !== "true";
   // The list and the storage summary in parallel; HTMX swaps need only the list.
   const [{ rows, total }, storage] = await Promise.all([
     listDocuments(c.env.DB, { q, page, pageSize: PAGE_SIZE, projectIds: project ? [project.projectId] : [] }),
