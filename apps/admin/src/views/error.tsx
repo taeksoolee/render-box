@@ -42,9 +42,14 @@ export function ErrorPage({ kind, user }: { kind: ErrorKind; user: SessionUser |
   return (
     <Document title={e.title}>
       {user ? <TopBar user={user} /> : null}
-      {/* Same container as other pages, so the left edge stays put. */}
-      <main id="main" tabindex={-1} class="mx-auto max-w-5xl px-4 py-10 outline-none sm:px-6 sm:py-16">
-        <div class={`${ui.card} max-w-sm`}>
+      {/* Centered like the login page: a page you read once and leave. With
+          the top bar, centered across only; without it, both ways. */}
+      <main
+        id="main"
+        tabindex={-1}
+        class={`grid justify-items-center px-4 outline-none ${user ? "py-10 sm:py-16" : "min-h-dvh place-items-center py-8"}`}
+      >
+        <div class={`${ui.card} w-full max-w-sm text-center`}>
           <p class="font-mono text-xs text-fg-subtle">{e.status}</p>
           <h1 class="mt-1 text-xl font-semibold">{e.title}</h1>
           <p class="mt-2 text-fg-muted break-keep">{e.body}</p>

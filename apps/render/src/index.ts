@@ -6,6 +6,7 @@ import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { isDev, type Env } from "./env";
 import { renderSecurityHeaders } from "./security-headers";
+import { messagePage } from "./message-page";
 import { injectStorageShim } from "./storage-shim";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -42,14 +43,23 @@ app.get("/__auth", async (c) => {
   return c.redirect(`${env.APP_ORIGIN}${adminPath ?? "/html"}`, 303);
 });
 
-const NOT_FOUND = "문서를 찾을 수 없습니다. 삭제되었거나 주소가 잘못되었습니다.";
+const notFound = (c: Context<{ Bindings: Env }>) =>
+  c.html(
+    messagePage({
+      status: 404,
+      title: "문서를 찾을 수 없습니다",
+      body: "삭제되었거나 주소가 잘못되었습니다. 주소를 보낸 사람에게 확인해 주세요.",
+      href: `${c.env.APP_ORIGIN}/html`,
+    }),
+    404,
+  );
 
 // The current HTML at /{key}, a previous version at /{key}/v/{seq}
 // (design.md 4.9). Both get the same headers and storage shim.
 async function render(c: Context<{ Bindings: Env }>, seq: number | null) {
   const env = c.env;
   const documentKey = c.req.param("documentKey") ?? "";
-  if (!isDocumentKey(documentKey)) return c.text(NOT_FOUND, 404);
+  if (!isDocumentKey(documentKey)) return notFound(c);
 
   const db = createDb(env.DB);
   const user = await loadSession(env.DB, getCookie(c, sessionCookieName("RENDER", isDev(env))), "RENDER");
@@ -75,7 +85,7 @@ async function render(c: Context<{ Bindings: Env }>, seq: number | null) {
   }
   // Knowing the URL is not enough: the key must be in the document's project.
   // Other projects' documents get the same 404 as missing ones (design.md 3.9).
-  if (!found || !canRead(user.projects, found.projectId)) return c.text(NOT_FOUND, 404);
+  if (!found || !canRead(user.projects, found.projectId)) return notFound(c);
   const { blobId } = found;
 
   return new Response(blobStream(env.DB, blobId, injectStorageShim), {
@@ -86,14 +96,22 @@ async function render(c: Context<{ Bindings: Env }>, seq: number | null) {
 app.get("/:documentKey", (c) => render(c, null));
 app.get("/:documentKey/v/:seq", async (c) => {
   const raw = c.req.param("seq");
-  if (!/^[1-9][0-9]{0,8}$/.test(raw)) return c.text(NOT_FOUND, 404);
+  if (!/^[1-9][0-9]{0,8}$/.test(raw)) return notFound(c);
   return render(c, Number(raw));
 });
 
-app.notFound((c) => c.text("Not Found", 404));
+app.notFound(notFound);
 app.onError((err, c) => {
   console.error(err);
-  return c.text("Internal Server Error", 500);
+  return c.html(
+    messagePage({
+      status: 500,
+      title: "일시적인 오류가 발생했습니다",
+      body: "잠시 후 다시 시도해 주세요. 계속되면 관리자에게 알려 주세요.",
+      href: `${c.env.APP_ORIGIN}/html`,
+    }),
+    500,
+  );
 });
 
 export default app;

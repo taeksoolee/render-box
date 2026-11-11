@@ -552,7 +552,8 @@ Strict-Transport-Security: max-age=31536000
 | 응답 | Content-Type |
 | --- | --- |
 | 문서 | `text/html; charset=utf-8` |
-| 404·오류 | `text/plain; charset=utf-8` |
+| 404·500 | `text/html; charset=utf-8`. 가운데 카드 하나와 관리 목록 링크. 스크립트 없이 인라인 스타일만(같은 CSP·sandbox) (`message-page.ts`) |
+| `/__auth` 실패 | `text/plain; charset=utf-8` |
 | `/__box/*` (MVP 2) | `text/javascript; charset=utf-8` |
 
 - 렌더링 응답에는 `Set-Cookie`를 넣지 않는다. 세션을 발급하는 `/__auth`만 예외다.
