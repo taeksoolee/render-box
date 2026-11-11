@@ -18,7 +18,7 @@ const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const MAX_REQUEST_BYTES = MAX_MCP_HTML_BYTES * 2 + 64 * 1024;
 
 const INSTRUCTIONS = [
-  "render-box는 기획자가 만든 HTML을 팀원(개발자·디자이너)에게 공유하는 팀 도구다.",
+  "render-box는 HTML을 주소 하나로 팀원에게 공유하는 팀 도구다.",
   "upload_html로 올리면 render_url이 나온다. 이 주소를 사용자에게 알려 주면 된다. 팀원은 로그인 후 새 창에서 본다.",
   "문서는 프로젝트(예: tamna)에 속한다. 키가 편집할 수 있는 프로젝트가 여럿이면 upload_html에 project를 넣는다. 어느 프로젝트인지 모르면 사용자에게 묻는다.",
   "같은 폴더의 이미지·스크립트 파일은 함께 올라가지 않는다. 이미지는 data: URL(base64)이나 https 주소로 HTML 안에 넣는다.",

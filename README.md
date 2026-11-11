@@ -10,7 +10,7 @@
 > Runs on the Cloudflare Workers free plan with D1 (Hono, HTMX, Drizzle). UI and docs are in Korean.
 > Deploy your own: `pnpm setup:remote`.
 
-AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을 올리면 주소가 하나 생기고 받은 사람이 새 창에서 실제 동작을 확인하는 도구입니다. 기획·운영자가 올리고, 개발자·디자이너가 봅니다.
+AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을 올리면 주소가 하나 생기고 받은 사람이 새 창에서 실제 동작을 확인하는 도구입니다.
 
 내 Cloudflare 계정에 직접 배포해서 씁니다. 무료 플랜으로 충분하고, 올린 HTML은 외부 서비스로 나가지 않습니다.
 

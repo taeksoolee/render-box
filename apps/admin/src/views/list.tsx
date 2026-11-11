@@ -93,7 +93,7 @@ function Empty({ data }: { data: ListData }) {
     <div class={ui.empty}>
       <Icon name="file-code" class="mx-auto size-8 text-fg-subtle" />
       <p class="mt-3 text-base font-semibold">아직 등록된 문서가 없습니다</p>
-      <p class="mt-1 text-fg-muted break-keep">기획자가 문서를 올리면 여기에 표시됩니다.</p>
+      <p class="mt-1 text-fg-muted break-keep">편집자가 문서를 올리면 여기에 표시됩니다.</p>
     </div>
   );
 }
