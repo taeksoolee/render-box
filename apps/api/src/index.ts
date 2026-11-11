@@ -22,6 +22,7 @@ const INSTRUCTIONS = [
   "upload_html로 올리면 render_url이 나온다. 이 주소를 사용자에게 알려 주면 된다. 팀원은 로그인 후 새 창에서 본다.",
   "문서는 프로젝트(예: tamna)에 속한다. 키가 편집할 수 있는 프로젝트가 여럿이면 upload_html에 project를 넣는다. 어느 프로젝트인지 모르면 사용자에게 묻는다.",
   "같은 폴더의 이미지·스크립트 파일은 함께 올라가지 않는다. 이미지는 data: URL(base64)이나 https 주소로 HTML 안에 넣는다.",
+  "렌더링 화면은 sandbox(출처 없음)로 열린다. 부모와 iframe은 서로의 document에 직접 접근할 수 없으니(contentDocument, contentWindow.document, parent.document 등) 통신은 postMessage로 한다.",
   "HTML은 1MB까지 올릴 수 있다. 더 큰 파일(10MB까지)은 웹 화면이나 REST API(POST /api/v1/html)로 올리도록 안내한다.",
   "문서 삭제는 웹 화면에서만 할 수 있다.",
 ].join("\n");

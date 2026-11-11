@@ -69,6 +69,7 @@ claude mcp add --transport http render-box "$RB_API/mcp" \
 ### 알아 둘 점
 
 - **HTML은 1MB까지 올릴 수 있습니다.** AI가 HTML 전체를 요청 안에 담아 보내야 하기 때문입니다. 더 큰 파일은 웹 화면이나 REST API로 올리세요.
+- **iframe 직접 접근은 동작하지 않습니다.** 부모와 iframe이 서로의 `document`를 읽는 코드(`contentDocument` 등)가 있으면 `upload_html`·`update_html` 결과에 `warnings`가 붙습니다. 저장은 되고, AI가 경고를 보고 `postMessage` 방식으로 고쳐 다시 올립니다. REST API는 HTML을 해석하지 않아 경고를 주지 않습니다.
 - **같은 폴더의 이미지 파일은 함께 올라가지 않습니다.** 이미지는 HTML 안에 base64(`data:`)로 넣거나 `https://` 주소를 써야 합니다. AI에게도 그렇게 안내되어 있습니다.
 
 ---

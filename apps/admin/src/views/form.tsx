@@ -26,6 +26,7 @@ const RESTRICTIONS = [
   "새 창 열기(window.open, target=\"_blank\")와 파일 다운로드는 동작하지 않습니다.",
   "외부 API는 모든 출처를 허용하는 공개 API(Access-Control-Allow-Origin: *)만 호출할 수 있습니다.",
   "주소를 바꾸는 페이지 이동 방식(history.pushState)을 쓰면 새로고침 시 문서를 찾지 못합니다. 해시(#/page) 방식을 권장합니다.",
+  "iframe 안의 문서를 직접 읽을 수 없습니다(contentDocument, contentWindow.document, parent.document). 부모와 iframe 사이는 postMessage로 주고받으세요.",
 ];
 
 function FieldError({ id, message }: { id: string; message?: string }) {
@@ -449,7 +450,7 @@ export function DocumentFormPage({
           </div>
 
           <details class="rounded-lg border border-line bg-surface px-4 py-3">
-            <summary class="cursor-pointer text-sm font-medium">업로드한 HTML에서 안 되는 것 (5가지)</summary>
+            <summary class="cursor-pointer text-sm font-medium">업로드한 HTML에서 안 되는 것 ({RESTRICTIONS.length}가지)</summary>
             <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-fg-muted break-keep">
               {RESTRICTIONS.map((r) => (
                 <li>{r}</li>

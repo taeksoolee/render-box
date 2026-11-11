@@ -1,4 +1,5 @@
 import { editsAny, type ActiveKey } from "@render-box/auth";
+import { htmlWarnings } from "@render-box/documents";
 import { z } from "zod";
 import { createHtml, getHtml, listHtml, requireEditor, ServiceError, updateHtml, type Ctx, type HtmlInput } from "./service";
 
@@ -64,14 +65,14 @@ const toolMeta: Record<
   upload_html: {
     title: "HTML 올리기",
     description:
-      "HTML 문서를 render-box에 새로 올리고, 팀원이 새 창에서 볼 수 있는 렌더링 URL(render_url)을 돌려준다. 올린 뒤 render_url을 사용자에게 알려 준다.",
+      "HTML 문서를 render-box에 새로 올리고, 팀원이 새 창에서 볼 수 있는 렌더링 URL(render_url)을 돌려준다. 올린 뒤 render_url을 사용자에게 알려 준다. 결과에 warnings가 있으면 저장은 되었지만 그 부분이 동작하지 않으니, 내용대로 HTML을 고쳐 update_html로 다시 올린다.",
     editorOnly: true,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   update_html: {
     title: "HTML 수정",
     description:
-      "이미 올린 문서의 HTML이나 제목·설명·링크를 바꾼다. 넘긴 항목만 바뀌고 렌더링 URL은 그대로다.",
+      "이미 올린 문서의 HTML이나 제목·설명·링크를 바꾼다. 넘긴 항목만 바뀌고 렌더링 URL은 그대로다. 결과에 warnings가 있으면 그 내용대로 고쳐 다시 올린다.",
     editorOnly: true,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   },
@@ -132,11 +133,11 @@ async function run(ctx: Ctx, name: ToolName, data: unknown): Promise<Record<stri
   switch (name) {
     case "upload_html": {
       const input = data as z.infer<(typeof schemas)["upload_html"]>;
-      return createHtml(ctx, input, htmlStream(input.html));
+      return withWarnings(await createHtml(ctx, input, htmlStream(input.html)), input.html);
     }
     case "update_html": {
       const { document_key, html, ...fields } = data as z.infer<(typeof schemas)["update_html"]>;
-      return updateHtml(ctx, document_key, fields, html !== undefined ? htmlStream(html) : null);
+      return withWarnings(await updateHtml(ctx, document_key, fields, html !== undefined ? htmlStream(html) : null), html);
     }
     case "list_html":
       return listHtml(ctx, data as z.infer<(typeof schemas)["list_html"]>);
@@ -150,6 +151,14 @@ async function run(ctx: Ctx, name: ToolName, data: unknown): Promise<Record<stri
       return { ...info, html: await new Response(source()).text() };
     }
   }
+}
+
+// Saved anyway (warnings never block, D-07); the AI reads them and can fix the
+// HTML with update_html. Only MCP: its HTML is already a string under 1MB,
+// while REST stores up to 10MB without decoding (design.md 11.3).
+function withWarnings(result: Record<string, unknown>, html: string | undefined) {
+  const warnings = html === undefined ? [] : htmlWarnings(html);
+  return warnings.length ? { ...result, warnings } : result;
 }
 
 // The whole HTML arrives inside the JSON-RPC message, so the 1MB cap is

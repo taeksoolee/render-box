@@ -47,6 +47,7 @@ HTML 파일을 올리면 주소가 하나 생기고, 그 주소를 받은 팀원
 - 새 창 열기(`window.open`, `target="_blank"`)와 파일 다운로드는 동작하지 않습니다.
 - 외부 API는 모든 출처를 허용하는 공개 API(`Access-Control-Allow-Origin: *`)만 부를 수 있습니다.
 - 주소를 바꾸는 페이지 이동(`history.pushState`)을 쓰면 새로고침할 때 문서를 찾지 못합니다. 해시(`#/page`) 방식을 쓰세요.
+- iframe 안의 문서를 직접 읽을 수 없습니다(`contentDocument`, `contentWindow.document`, `parent.document` 등). 화면을 iframe에 넣고 그 위에 설명 번호를 올리는 식의 프로토타입이 여기에 걸립니다. 부모와 iframe 사이는 `postMessage`로 주고받게 AI에게 고쳐 달라고 하세요. 이런 코드가 있으면 올릴 때 경고가 뜹니다.
 
 올린 HTML은 관리 화면과 분리된 주소에서 격리되어 실행됩니다. 그래서 위 기능이 막혀 있습니다.
 

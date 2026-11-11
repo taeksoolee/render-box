@@ -141,9 +141,15 @@
   var ABSOLUTE = /^(https?:|data:|blob:|\/\/|#|mailto:)/i;
 
   // Heuristic only; false positives/negatives are accepted (design.md 4.6).
+  // Reading another frame's document: blocked in the rendered page (opaque
+  // origins), so the iframe link-up silently stops working. Same pattern as
+  // packages/documents/src/warnings.ts (a test checks they match).
+  var FRAME_ACCESS = /\.contentDocument\b|\.contentWindow\s*\.\s*document\b|\b(?:parent|top|opener)\s*\.\s*document\b|\bframes\s*(?:\[[^\]\n]{0,40}\]|\.\s*[A-Za-z_$][\w$]*)\s*\.\s*document\b/g;
+
   function findWarnings(html) {
     var relative = [];
     var insecure = [];
+    var frameAccess = [];
     var m;
     RESOURCE_ATTR.lastIndex = 0;
     while ((m = RESOURCE_ATTR.exec(html))) {
@@ -154,12 +160,18 @@
       if (/^http:/i.test(value)) insecure.push(value);
       else if (!ABSOLUTE.test(value) && tag !== "img") relative.push(value);
     }
+    FRAME_ACCESS.lastIndex = 0;
+    while ((m = FRAME_ACCESS.exec(html))) {
+      var start = m.index;
+      if (m[0].charAt(0) === ".") while (start > 0 && /[\w$]/.test(html.charAt(start - 1))) start--;
+      frameAccess.push(html.slice(start, m.index + m[0].length).replace(/\s+/g, ""));
+    }
     var unique = function (list) {
       return list.filter(function (v, i) {
         return list.indexOf(v) === i;
       });
     };
-    return { relative: unique(relative), insecure: unique(insecure) };
+    return { relative: unique(relative), insecure: unique(insecure), frameAccess: unique(frameAccess) };
   }
 
   // Local <img src> paths outside scripts and comments. Values built by script
@@ -380,6 +392,12 @@
         ]);
       if (found.insecure.length)
         items.push(["보안 연결(https)이 아닌 리소스는 브라우저가 차단합니다.", found.insecure]);
+      if (found.frameAccess.length)
+        items.push([
+          "iframe 안의 문서를 직접 읽는 코드가 있어, iframe과 연결된 부분(화면 위 표시, 클릭하면 이동 등)이 동작하지 않습니다. " +
+            "렌더링 화면은 보안상 iframe과 서로 다른 출처로 열립니다. AI에게 \"부모와 iframe 사이 통신을 postMessage로 바꿔 줘\"라고 요청하세요.",
+          found.frameAccess,
+        ]);
       items.forEach(function (item) {
         var li = document.createElement("li");
         li.textContent = item[0] + " ";

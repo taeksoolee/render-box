@@ -421,6 +421,8 @@ html_documents.blob_id → 현재 원본
 
 JS가 꺼져 있으면 HTML을 업로드할 수 없다. 이 경우 정보 수정만 가능하며, 화면에 안내를 표시한다(`<noscript>`).
 
+**iframe 직접 접근 경고:** 렌더링 문서는 출처가 없고(sandbox, `allow-same-origin` 없음) 문서가 만든 iframe도 같은 sandbox를 물려받아 서로 다른 출처가 된다. 그래서 `contentDocument`, `contentWindow.document`, `parent/top/opener.document`, `frames[…].document`는 "Blocked a frame … cross-origin" 오류가 난다. 등록·수정 화면(app.js)과 MCP 업로드(`packages/documents/src/warnings.ts`, 결과의 `warnings`)가 같은 정규식으로 찾아 경고한다. 저장은 막지 않는다 (D-07). 정규식은 고정 문자열(`.content…`)에서 시작해 선형으로 돈다(1MB에 약 1ms). REST는 원본을 해석하지 않으므로 검사하지 않는다. `allow-same-origin`으로 풀지 않는 이유는 [decisions.md](decisions.md) D-40.
+
 ## 4.7 목록 쿼리
 
 - `html_chunks`는 조회하지 않는다. 크기는 `html_size`를 쓴다.
