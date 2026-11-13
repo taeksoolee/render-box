@@ -1,3 +1,4 @@
+export * from "./comments";
 export * from "./fields";
 export * from "./repository";
 export * from "./storage";

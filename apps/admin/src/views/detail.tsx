@@ -1,6 +1,6 @@
 import type { Membership, SessionUser } from "@render-box/auth";
 import type { DocumentLink } from "@render-box/db";
-import type { VersionRow } from "@render-box/documents";
+import { MAX_COMMENT_CHARS, type CommentRow, type VersionRow } from "@render-box/documents";
 import { formatFullDate, formatRelativeDate, formatSize, isoDate, linkDisplayName } from "../lib/format";
 import { Alert, AppPage, BackLink } from "./layout";
 import { Icon } from "./icon";
@@ -52,9 +52,22 @@ function CopyFallback() {
   );
 }
 
-export type DetailNotice = "restored" | "version-deleted" | "conflict";
+export type DetailNotice = "restored" | "version-deleted" | "conflict" | "comment-invalid" | "comment-gone";
+
+// Memo notices are shown in the memo section (the redirect lands there).
+const COMMENT_NOTICES = new Set<DetailNotice>(["comment-invalid", "comment-gone"]);
 
 const NOTICES: Record<DetailNotice, { kind: "success" | "error"; title: string; body: string }> = {
+  "comment-invalid": {
+    kind: "error",
+    title: "메모를 저장하지 못했습니다",
+    body: `빈 메모는 남길 수 없고, ${MAX_COMMENT_CHARS.toLocaleString("en-US")}자까지 쓸 수 있습니다.`,
+  },
+  "comment-gone": {
+    kind: "error",
+    title: "메모를 찾지 못했습니다",
+    body: "이미 지워졌거나, 바꿀 수 없는 메모입니다. 화면을 새로 고쳐 확인해 주세요.",
+  },
   restored: {
     kind: "success",
     title: "버전을 복원했습니다",
@@ -71,6 +84,7 @@ const NOTICES: Record<DetailNotice, { kind: "success" | "error"; title: string; 
 export function DetailPage({
   doc,
   versions,
+  comments,
   user,
   project,
   renderOrigin,
@@ -80,6 +94,7 @@ export function DetailPage({
 }: {
   doc: DetailDoc;
   versions: VersionRow[];
+  comments: CommentRow[];
   user: SessionUser;
   // The document's project, as the viewer belongs to it (design.md 3.9).
   project: Membership;
@@ -95,7 +110,7 @@ export function DetailPage({
       <div class="space-y-8">
         <div class="space-y-4">
           <BackLink href={`/html?project=${encodeURIComponent(project.slug)}`}>{project.name} 목록</BackLink>
-          {notice ? (
+          {notice && !COMMENT_NOTICES.has(notice) ? (
             <Alert kind={NOTICES[notice].kind} title={NOTICES[notice].title}>
               {NOTICES[notice].body ? <p>{NOTICES[notice].body}</p> : null}
             </Alert>
@@ -226,6 +241,15 @@ export function DetailPage({
         </div>
         </div>
 
+        <Comments
+          doc={doc}
+          comments={comments}
+          user={user}
+          editor={editor}
+          currentSeq={versions[0]?.seq ?? 1}
+          notice={notice && COMMENT_NOTICES.has(notice) ? notice : null}
+        />
+
         <Versions doc={doc} versions={versions} user={user} editor={editor} renderOrigin={renderOrigin} />
 
         {editor ? (
@@ -342,6 +366,118 @@ function Versions({
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+// Memos, oldest first like a comment thread (design.md 4.10). Anyone who can
+// see the document may write one; the author edits or deletes their own, and
+// an editor may delete any.
+function Comments({
+  doc,
+  comments,
+  user,
+  editor,
+  currentSeq,
+  notice,
+}: {
+  doc: DetailDoc;
+  comments: CommentRow[];
+  user: SessionUser;
+  editor: boolean;
+  currentSeq: number;
+  notice: DetailNotice | null;
+}) {
+  const base = `/html/${doc.documentKey}/comments`;
+  const csrf = <input type="hidden" name="_csrf" value={user.csrfToken ?? ""} />;
+  return (
+    <section id="comments">
+      <h2 class={ui.h2}>
+        메모 <span class="font-normal text-fg-subtle tabular-nums">{comments.length}</span>
+      </h2>
+      <p class={ui.hint}>이 문서를 볼 수 있는 사람은 누구나 메모를 남길 수 있습니다. 어느 버전을 보고 남겼는지 함께 표시됩니다.</p>
+      {notice ? (
+        <div class="mt-3">
+          <Alert kind={NOTICES[notice].kind} title={NOTICES[notice].title}>
+            <p>{NOTICES[notice].body}</p>
+          </Alert>
+        </div>
+      ) : null}
+      {comments.length ? (
+        <ul class={`${ui.tableWrap} mt-3 divide-y divide-line`} data-comments>
+          {comments.map((m) => {
+            const mine = m.keyId === user.keyId;
+            return (
+              <li class="px-4 py-3" id={`comment-${m.id}`} data-comment>
+                <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-fg-subtle tabular-nums">
+                  <span class="font-medium text-fg">{m.authorName}</span>
+                  <span class={m.versionSeq === currentSeq ? ui.badgePrimary : ui.badgeNeutral}>v{m.versionSeq}</span>
+                  <time datetime={isoDate(m.createdAt)} title={formatFullDate(m.createdAt)}>
+                    {formatRelativeDate(m.createdAt)}
+                  </time>
+                  {m.updatedAt ? <span title={formatFullDate(m.updatedAt)}>(수정됨)</span> : null}
+                </div>
+                <p class="mt-1 text-sm leading-6 whitespace-pre-wrap break-words" data-comment-body>
+                  {m.body}
+                </p>
+                {mine || editor ? (
+                  <div class="mt-1 -ml-2 flex flex-wrap items-start gap-1">
+                    {mine ? (
+                      <details class="group open:w-full sm:open:w-auto">
+                        <summary class={`${ui.rowAction} cursor-pointer list-none`}>수정</summary>
+                        <form method="post" action={`${base}/${m.id}`} class="mt-2 space-y-2" data-submit-once>
+                          {csrf}
+                          <textarea
+                            name="body"
+                            required
+                            maxlength={MAX_COMMENT_CHARS}
+                            aria-label="메모 수정"
+                            class={`${ui.textarea} w-full sm:w-[32rem]`}
+                          >
+                            {m.body}
+                          </textarea>
+                          <button type="submit" class={ui.secondary}>
+                            저장
+                          </button>
+                        </form>
+                      </details>
+                    ) : null}
+                    <form
+                      method="post"
+                      action={`${base}/${m.id}/delete`}
+                      data-confirm={mine ? "이 메모를 지울까요?" : `${m.authorName}의 메모를 지울까요?\n지우면 되돌릴 수 없습니다.`}
+                    >
+                      {csrf}
+                      <button type="submit" class={ui.rowActionDanger}>
+                        삭제
+                      </button>
+                    </form>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p class="mt-3 text-fg-subtle">아직 메모가 없습니다.</p>
+      )}
+      <form method="post" action={base} class="mt-3 space-y-2" data-submit-once>
+        {csrf}
+        <label for="comment-body" class="sr-only">
+          새 메모
+        </label>
+        <textarea
+          id="comment-body"
+          name="body"
+          required
+          maxlength={MAX_COMMENT_CHARS}
+          placeholder="이 문서에 대한 의견을 남겨 주세요"
+          class={`${ui.textarea} w-full`}
+        ></textarea>
+        <button type="submit" class={ui.primary}>
+          메모 남기기
+        </button>
+      </form>
     </section>
   );
 }

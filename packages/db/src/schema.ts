@@ -154,3 +154,24 @@ export const htmlDocumentVersions = sqliteTable(
     index("html_document_versions_blob_id_idx").on(t.blobId),
   ],
 );
+
+// Memos on a document, like comments: any member of its project may write
+// one, including viewers (design.md 4.10). Plain text; version_seq is the
+// HTML version that was current when it was written.
+export const documentComments = sqliteTable(
+  "document_comments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    documentId: integer("document_id")
+      .notNull()
+      .references(() => htmlDocuments.id),
+    keyId: integer("key_id")
+      .notNull()
+      .references(() => accessKeys.id),
+    versionSeq: integer("version_seq").notNull(),
+    body: text("body").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at"),
+  },
+  (t) => [index("document_comments_document_id_idx").on(t.documentId, t.id)],
+);

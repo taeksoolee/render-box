@@ -25,6 +25,7 @@ export type DocumentListRow = {
   title: string;
   description: string | null;
   linkCount: number;
+  commentCount: number;
   htmlSize: number;
   updatedByName: string;
   updatedAt: number;
@@ -69,6 +70,7 @@ export async function listDocuments(
       .prepare(
         `SELECT d.document_key AS documentKey, p.slug AS projectSlug, d.title, d.description,
                 json_array_length(d.links) AS linkCount, d.html_size AS htmlSize,
+                (SELECT COUNT(*) FROM document_comments c WHERE c.document_id = d.id) AS commentCount,
                 k.name AS updatedByName, d.updated_at AS updatedAt
          FROM html_documents d JOIN access_keys k ON k.id = d.updated_by JOIN projects p ON p.id = d.project_id
          WHERE ${where}
@@ -182,7 +184,7 @@ export function releaseBlobStatements(d1: D1Database, blobId: number): D1Prepare
   ];
 }
 
-// The document, all its versions, and the blobs nothing else uses.
+// The document, all its versions and memos, and the blobs nothing else uses.
 export async function deleteDocument(d1: D1Database, documentId: number): Promise<void> {
   const { results } = await d1
     .prepare(
@@ -192,6 +194,7 @@ export async function deleteDocument(d1: D1Database, documentId: number): Promis
     .bind(documentId)
     .all<{ blobId: number }>();
   await d1.batch([
+    d1.prepare("DELETE FROM document_comments WHERE document_id = ?").bind(documentId),
     d1.prepare("DELETE FROM html_document_versions WHERE document_id = ?").bind(documentId),
     d1.prepare("DELETE FROM html_documents WHERE id = ?").bind(documentId),
     ...results.flatMap((r) => releaseBlobStatements(d1, r.blobId)),

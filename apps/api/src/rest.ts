@@ -5,9 +5,11 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Env } from "./env";
 import {
+  addHtmlComment,
   createHtml,
   getHtml,
   listHtml,
+  listHtmlComments,
   listHtmlVersions,
   ServiceError,
   updateHtml,
@@ -131,6 +133,25 @@ rest.patch(
     if (!parsed.success) return apiError(c, 400, "invalid_fields", z.prettifyError(parsed.error));
     const doc = await updateHtml(ctx(c), c.req.param("key"), parsed.data, null, expected);
     return c.json(doc, 200, { ETag: etag(doc.version) });
+  },
+);
+
+// Memos (design.md 4.10): read and add; edit and delete only on the web.
+rest.get("/html/:key/comments", async (c) => c.json(await listHtmlComments(ctx(c), c.req.param("key"))));
+
+rest.post(
+  "/html/:key/comments",
+  bodyLimit({ maxSize: 64 * 1024, onError: (c) => apiError(c, 413, "too_large", "요청이 너무 큽니다.") }),
+  async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return apiError(c, 400, "bad_json", '본문은 JSON이어야 합니다. 예: {"body": "버튼 색을 진하게"}');
+    }
+    const parsed = z.object({ body: z.string() }).safeParse(body);
+    if (!parsed.success) return apiError(c, 400, "invalid_fields", z.prettifyError(parsed.error));
+    return c.json(await addHtmlComment(ctx(c), c.req.param("key"), parsed.data.body), 201);
   },
 );
 

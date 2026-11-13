@@ -502,6 +502,20 @@ HTML을 교체해도 이전 원본을 남기고, 전체 용량에 상한을 둔�
 
 # 5. 렌더링
 
+
+## 4.10 메모
+
+문서마다 메모를 댓글처럼 여러 개 남긴다. 기획·운영자가 올린 HTML에 보는 사람이 의견을 남기는 곳이다 ([decisions.md](decisions.md) D-41).
+
+- **누가:** 그 문서의 프로젝트에 속한 키는 누구나 쓴다. VIEWER도 쓴다(VIEWER는 "문서는 못 바꾸고 메모는 쓴다"). 속하지 않은 키에는 문서와 마찬가지로 404다.
+- **수정·삭제:** 수정은 쓴 사람만. 삭제는 쓴 사람, 또는 그 프로젝트의 EDITOR(관리자 포함). 둘 다 SQL 조건으로 검사해 위조한 요청도 막는다. 바꿀 수 없는 메모면 `?notice=comment-gone`.
+- **내용:** 글자만. 앞뒤 공백을 지우고 줄바꿈은 그대로 둔다. 1~2,000자(코드 포인트). HTML은 이스케이프되어 글자로 보인다. 빈 메모는 `?notice=comment-invalid`.
+- **버전:** 쓸 때의 현재 HTML 버전(`seq`)을 함께 저장해 "v2"처럼 보인다. 지금 버전이면 파란 배지.
+- **화면:** 상세 화면 "메모" 섹션. 오래된 순, 이름·버전·시각·"(수정됨)". 수정은 `<details>` 안의 폼이라 스크립트가 필요 없다. 목록에 메모 수 열(모바일은 메타 줄).
+- **AI·스크립트:** MCP `list_comments`·`add_comment`, REST `GET`·`POST /api/v1/html/:key/comments`. 읽기와 쓰기만, 수정·삭제는 웹 화면에서. 작성자는 그 키 이름이다 (11.3, 11.4).
+- **삭제:** 문서를 지우면 메모도 같은 배치에서 지운다. 키를 회수해도 메모는 남는다(이름은 그대로 보인다).
+- 알림은 없다. 저장 용량 계산에는 넣지 않는다(글자 2,000자 이하).
+
 ## 5.1 흐름
 
 ```
@@ -726,6 +740,20 @@ PK: `(blob_id, seq)`
 - 스키마는 `packages/db`의 Drizzle 정의로 관리하고, `drizzle-kit generate`로 SQL 마이그레이션을 만든다.
 - 적용은 `wrangler d1 migrations apply`로 한다. 로컬은 `--local`, 운영은 `--remote`.
 
+
+## 6.9 document_comments
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| id | INTEGER PK | 오래된 순 정렬에도 쓴다 |
+| document_id | INTEGER NOT NULL | html_documents.id |
+| key_id | INTEGER NOT NULL | access_keys.id (작성자) |
+| version_seq | INTEGER NOT NULL | 쓸 때의 현재 HTML 버전 seq |
+| body | TEXT NOT NULL | 1~2,000자, 글자만 |
+| created_at | INTEGER NOT NULL | |
+| updated_at | INTEGER | 수정했으면 그 시각 |
+
+- 인덱스 `(document_id, id)`. 마이그레이션 0004.
 ---
 
 # 7. 라우팅 및 미들웨어
@@ -1135,8 +1163,10 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 | `update_html` | EDITOR | `document_key`와 바꿀 항목만. 빠진 항목은 유지, 렌더링 URL은 그대로 |
 | `list_html` | 전체 | `query?`, `page?` (20개씩). 웹 목록과 같은 검색 |
 | `get_html` | 전체 | 문서 정보, `include_source: true`면 HTML 원본 (1MB 이하) |
+| `list_comments` | 전체 | 메모 목록 (오래된 순, `author`, `html_version`, `body`) |
+| `add_comment` | 전체 | `document_key`, `body` → 메모 하나 추가 (작성자는 그 키 이름). 수정·삭제 도구는 없다 (4.10) |
 
-- `tools/list`는 키 역할에 맞는 도구만 보여 준다. VIEWER에게는 `list_html`, `get_html`만 보인다. 호출 시에도 역할을 다시 검사한다.
+- `tools/list`는 키 역할에 맞는 도구만 보여 준다. VIEWER에게는 `list_html`, `get_html`, `list_comments`, `add_comment`만 보인다. 호출 시에도 역할을 다시 검사한다.
 - **삭제 도구는 없다.** 되돌릴 수 없는 작업은 웹 화면에서 사람이 확인하고 한다.
 - **입력 검증:** 제목·설명·링크 규칙은 웹 화면과 같은 함수(`validateDocumentFields`)를 쓴다. 잘못된 입력, 없는 문서, 동시 수정 충돌은 `isError: true` 도구 결과로 돌려줘 AI가 고쳐서 다시 호출하게 한다. 프로토콜 오류(알 수 없는 도구 등)만 JSON-RPC 오류로 응답한다.
 - **동시 수정:** `update_html`은 읽은 시점의 `version`으로 낙관적 잠금을 건다. 충돌하면 새로 올린 HTML을 지우고 "다시 시도" 결과를 돌려준다.
@@ -1155,6 +1185,8 @@ pnpm dev                   # render(:8788) → admin(:8787) → api(:8789) 순�
 | `GET /html?q=&page=` | 전체 | 목록 20개씩 (웹 목록과 같은 검색) |
 | `GET /html/:key` | 전체 | 문서 정보, `ETag: "<version>"` |
 | `GET /html/:key/versions` | 전체 | 버전 목록 (번호, 크기, 올린 사람, 날짜, `render_url`) |
+| `GET /html/:key/comments` | 전체 | 메모 목록 (4.10) |
+| `POST /html/:key/comments` | 전체 | JSON `{body}` (64KB까지) → 201, 메모 목록 |
 | `GET /html/:key/source` | 전체 | 원본 바이트. `application/octet-stream`, `Content-Disposition: attachment`, `CSP: sandbox`로 이 출처에서 실행되지 않게 한다 |
 
 - **동시 수정:** `If-Match: "<version>"`을 보내면 버전이 다를 때 412(`version_mismatch`). 없으면 직전에 읽은 버전으로 낙관적 잠금만 건다 (충돌 시 409).

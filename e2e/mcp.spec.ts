@@ -23,7 +23,7 @@ test.describe("MCP", () => {
     const client = await connect(key("EDITOR"));
     expect(client.getServerVersion()?.name).toBe("render-box");
     const tools = (await client.listTools()).tools.map((t) => t.name);
-    expect(tools).toEqual(["upload_html", "update_html", "list_html", "get_html"]);
+    expect(tools).toEqual(["upload_html", "update_html", "list_html", "get_html", "list_comments", "add_comment"]);
 
     const up = await client.callTool({
       name: "upload_html",
@@ -67,7 +67,7 @@ test.describe("MCP", () => {
 
   test("viewer keys only read; bad input comes back as a tool error", async () => {
     const viewer = await connect(key("VIEWER"));
-    expect((await viewer.listTools()).tools.map((t) => t.name)).toEqual(["list_html", "get_html"]);
+    expect((await viewer.listTools()).tools.map((t) => t.name)).toEqual(["list_html", "get_html", "list_comments", "add_comment"]);
     const denied = await viewer.callTool({ name: "upload_html", arguments: { title: "x", html: "<p>x</p>" } });
     expect(denied.isError).toBe(true);
     expect(text(denied)).toContain("편집 권한");

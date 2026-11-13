@@ -12,6 +12,7 @@ export type ListRow = {
   title: string;
   description: string | null;
   linkCount: number;
+  commentCount: number;
   htmlSize: number;
   updatedByName: string;
   updatedAt: number;
@@ -143,6 +144,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
               <thead>
                 <tr>
                   <th class={ui.th}>제목</th>
+                  <th class={ui.thNum}>메모</th>
                   <th class={ui.thNum}>링크</th>
                   <th class={ui.thNum}>크기</th>
                   <th class={ui.th}>수정자</th>
@@ -161,6 +163,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
                       </a>
                       {row.description ? <p class={ui.rowDesc}>{row.description}</p> : null}
                     </td>
+                    <td class={ui.tdNum}>{row.commentCount}</td>
                     <td class={ui.tdNum}>{row.linkCount}</td>
                     <td class={ui.tdNum}>{formatSize(row.htmlSize)}</td>
                     <td class={`${ui.td} whitespace-nowrap text-fg-muted`}>{row.updatedByName}</td>
@@ -186,7 +189,7 @@ export function ListRegion({ data, user }: { data: ListData; user: SessionUser }
                 </div>
                 {row.description ? <p class={ui.rowDesc}>{row.description}</p> : null}
                 <p class="mt-1 text-xs text-fg-subtle tabular-nums">
-                  {row.updatedByName} · <When ms={row.updatedAt} /> · {formatSize(row.htmlSize)} · 링크{" "}
+                  {row.updatedByName} · <When ms={row.updatedAt} /> · {formatSize(row.htmlSize)} · 메모 {row.commentCount} · 링크{" "}
                   {row.linkCount}
                 </p>
               </li>

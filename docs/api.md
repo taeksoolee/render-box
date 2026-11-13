@@ -56,6 +56,7 @@ claude mcp add --transport http render-box "$RB_API/mcp" \
 - "방금 만든 화면에서 버튼 색만 바꿔서 render-box 문서 업데이트해 줘"
 - "render-box에서 '결제' 들어간 문서 찾아 줘"
 - "render-box 문서 `AbCd...` 원본 가져와서 모바일 레이아웃으로 고쳐 줘"
+- "render-box 문서 `AbCd...`에 달린 메모 반영해서 고쳐 줘"
 
 올리고 나면 AI가 **렌더링 URL**을 알려 줍니다. 이 주소를 팀원에게 보내면 됩니다. 팀원은 로그인한 뒤 새 창에서 봅니다.
 
@@ -67,6 +68,8 @@ claude mcp add --transport http render-box "$RB_API/mcp" \
 | `update_html` | 편집자 | 넘긴 항목(HTML, 제목, 설명, 링크)만 바꾸기. 주소는 그대로, 이전 HTML은 버전으로 남음 |
 | `list_html` | 전체 | 제목이나 문서 키로 찾기 |
 | `get_html` | 전체 | 문서 정보와 HTML 원본(1MB 이하) |
+| `list_comments` | 전체 | 팀원이 남긴 메모(댓글), 오래된 순. `html_version`은 메모를 쓸 때 보던 HTML 버전 |
+| `add_comment` | 전체 | 메모 하나 남기기. 작성자는 이 키의 이름. 수정·삭제는 웹 화면에서 |
 
 ### 알아 둘 점
 
@@ -155,7 +158,12 @@ curl "$RB_API/api/v1/html" -H "Authorization: Bearer $RB_KEY" --url-query "q=회
 curl "$RB_API/api/v1/html/<문서키>" -H "Authorization: Bearer $RB_KEY"                 # 문서 정보
 curl "$RB_API/api/v1/html/<문서키>/source" -H "Authorization: Bearer $RB_KEY" -o doc.html  # 원본 내려받기
 curl "$RB_API/api/v1/html/<문서키>/versions" -H "Authorization: Bearer $RB_KEY"       # 버전 목록
+curl "$RB_API/api/v1/html/<문서키>/comments" -H "Authorization: Bearer $RB_KEY"       # 메모 목록
+curl "$RB_API/api/v1/html/<문서키>/comments" -H "Authorization: Bearer $RB_KEY" \
+  -H "Content-Type: application/json" -d '{"body": "버튼 색을 진하게"}'                 # 메모 남기기 (201)
 ```
+
+목록(`GET /html`)의 문서마다 `comment_count`가 붙습니다. 메모 수정·삭제는 웹 화면에서 합니다.
 
 HTML을 바꿀 때마다 이전 HTML은 버전으로 남습니다. 버전 목록의 `render_url`로 이전 버전을 볼 수 있고, 복원과 삭제는 웹 화면에서 합니다.
 

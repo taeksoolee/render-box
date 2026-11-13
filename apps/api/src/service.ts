@@ -1,12 +1,16 @@
 import { canEdit, editsAny, type ActiveKey, type Membership } from "@render-box/auth";
 import { blobStream, deleteBlobStatements, MAX_HTML_BYTES } from "@render-box/db";
 import {
+  addComment,
   deleteOrphanBlobs,
   findDocument,
   hasErrors,
   insertDocument,
+  listComments,
   listDocuments,
   listVersions,
+  MAX_COMMENT_CHARS,
+  readCommentBody,
   STORAGE_FULL_MESSAGE,
   storageLimits,
   storeUpload,
@@ -212,6 +216,7 @@ export async function listHtml(ctx: Ctx, input: { query?: string; page?: number;
       title: r.title,
       render_url: `${ctx.env.RENDER_ORIGIN}/${r.documentKey}`,
       html_size: r.htmlSize,
+      comment_count: r.commentCount,
       updated_by: r.updatedByName,
       updated_at: new Date(r.updatedAt).toISOString(),
     })),
@@ -254,4 +259,33 @@ export async function listHtmlVersions(ctx: Ctx, documentKey: string) {
       created_at: new Date(v.createdAt).toISOString(),
     })),
   };
+}
+
+// Memos (design.md 4.10): any member may read and add, viewers included.
+// Editing and deleting stay in the web screen.
+export async function listHtmlComments(ctx: Ctx, documentKey: string) {
+  const doc = await loadDocument(ctx, documentKey);
+  const comments = await listComments(ctx.env.DB, doc.id);
+  return {
+    document_key: doc.documentKey,
+    comments: comments.map((m) => ({
+      id: m.id,
+      author: m.authorName,
+      // HTML version (seq in /versions) that was current when written.
+      html_version: m.versionSeq,
+      body: m.body,
+      created_at: new Date(m.createdAt).toISOString(),
+      updated_at: m.updatedAt ? new Date(m.updatedAt).toISOString() : null,
+    })),
+  };
+}
+
+export async function addHtmlComment(ctx: Ctx, documentKey: string, body: string) {
+  const doc = await loadDocument(ctx, documentKey);
+  const text = readCommentBody(body);
+  if (!text) {
+    throw new ServiceError(400, "invalid_fields", `메모는 비어 있을 수 없고, ${MAX_COMMENT_CHARS.toLocaleString("en-US")}자까지 쓸 수 있습니다.`);
+  }
+  await addComment(ctx.env.DB, { documentId: doc.id, keyId: ctx.key.id, body: text });
+  return { ...(await listHtmlComments(ctx, documentKey)), admin_url: `${ctx.env.APP_ORIGIN}/html/${doc.documentKey}#comments` };
 }

@@ -1,7 +1,18 @@
 import { editsAny, type ActiveKey } from "@render-box/auth";
 import { htmlWarnings, type HtmlWarning } from "@render-box/documents";
 import { z } from "zod";
-import { createHtml, getHtml, listHtml, requireEditor, ServiceError, updateHtml, type Ctx, type HtmlInput } from "./service";
+import {
+  addHtmlComment,
+  createHtml,
+  getHtml,
+  listHtml,
+  listHtmlComments,
+  requireEditor,
+  ServiceError,
+  updateHtml,
+  type Ctx,
+  type HtmlInput,
+} from "./service";
 
 // AI clients send the whole HTML inside one JSON-RPC message, which the
 // Worker must parse; keep it well under the web upload limit so parsing stays
@@ -54,6 +65,11 @@ const schemas = {
     document_key: documentKey,
     include_source: z.boolean().optional().describe("true면 HTML 원본도 함께 돌려줌 (1MB 이하일 때)"),
   }),
+  list_comments: z.object({ document_key: documentKey }),
+  add_comment: z.object({
+    document_key: documentKey,
+    body: z.string().describe("메모 내용 (최대 2,000자, 줄바꿈 유지). 글자만, HTML은 그대로 글자로 보인다"),
+  }),
 };
 
 type ToolName = keyof typeof schemas;
@@ -87,6 +103,20 @@ const toolMeta: Record<
     description: "문서 하나의 정보(제목, 설명, 링크, 렌더링 URL)와, 원하면 HTML 원본을 가져온다.",
     editorOnly: false,
     annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  list_comments: {
+    title: "메모 보기",
+    description:
+      "문서에 팀원이 남긴 메모(댓글)를 오래된 순으로 가져온다. html_version은 메모를 남길 때 보던 HTML 버전이다. 메모를 반영해 고칠 때는 update_html을 쓴다.",
+    editorOnly: false,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  add_comment: {
+    title: "메모 남기기",
+    description:
+      "문서에 메모(댓글)를 하나 남긴다. 작성자는 이 키의 이름으로 표시된다. 사용자가 메모를 남겨 달라고 할 때만 쓰고, 수정·삭제는 웹 화면에서 한다.",
+    editorOnly: false,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
 };
 
@@ -149,6 +179,12 @@ async function run(ctx: Ctx, name: ToolName, data: unknown): Promise<Record<stri
         return { ...info, html: null, html_note: "HTML이 1MB를 넘어 원본은 웹 화면이나 REST API(/api/v1/html/{key}/source)로 받아 주세요." };
       }
       return { ...info, html: await new Response(source()).text() };
+    }
+    case "list_comments":
+      return listHtmlComments(ctx, (data as z.infer<(typeof schemas)["list_comments"]>).document_key);
+    case "add_comment": {
+      const input = data as z.infer<(typeof schemas)["add_comment"]>;
+      return addHtmlComment(ctx, input.document_key, input.body);
     }
   }
 }

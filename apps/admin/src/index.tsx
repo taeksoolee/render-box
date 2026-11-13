@@ -15,6 +15,8 @@ import {
 } from "@render-box/auth";
 import { blobStream, createDb, MAX_HTML_BYTES } from "@render-box/db";
 import {
+  addComment,
+  deleteComment,
   deleteDocument,
   deleteOrphanBlobs,
   deleteVersions,
@@ -22,13 +24,16 @@ import {
   findDocument as findDocumentRecord,
   findVersion,
   insertDocument,
+  listComments,
   listDocuments,
   listPreviousVersions,
   listVersions,
   projectUsage,
+  readCommentBody,
   storageLimits,
   storageUsage,
   storeUpload,
+  updateComment,
   updateDocument,
   UploadError,
   type DocumentRecord,
@@ -376,19 +381,25 @@ app.get("/html/:key", requireLogin, async (c) => {
   if (!found) return errorPage(c, "notFound");
   const { doc, project } = found;
   const notice = c.req.query("notice");
+  const [versions, comments] = await Promise.all([listVersions(c.env.DB, doc.id), listComments(c.env.DB, doc.id)]);
   return c.html(
     <DetailPage
       doc={doc}
-      versions={await listVersions(c.env.DB, doc.id)}
+      versions={versions}
+      comments={comments}
       user={c.get("user")!}
       project={project}
       renderOrigin={c.env.RENDER_ORIGIN}
       saved={c.req.query("saved") === "1"}
       replaced={c.req.query("replaced") === "1"}
-      notice={notice === "restored" || notice === "version-deleted" || notice === "conflict" ? notice : null}
+      notice={isDetailNotice(notice) ? notice : null}
     />,
   );
 });
+
+const DETAIL_NOTICES = ["restored", "version-deleted", "conflict", "comment-invalid", "comment-gone"] as const;
+const isDetailNotice = (n: string | undefined): n is (typeof DETAIL_NOTICES)[number] =>
+  (DETAIL_NOTICES as readonly string[]).includes(n ?? "");
 
 // "3" → 3; anything else is not a version number.
 const parseSeq = (s: string | undefined) => (s && /^[1-9][0-9]{0,8}$/.test(s) ? Number(s) : null);
@@ -529,6 +540,51 @@ app.post("/html/:key/v/:seq/delete", requireLogin, formLimit, async (c) => {
   const deleted = await deleteVersions(c.env.DB, [found.version.id], [found.doc.projectId]);
   if (deleted === 0) return errorPage(c, "currentVersion");
   return c.redirect(`/html/${found.doc.documentKey}?notice=version-deleted#versions`, 303);
+});
+
+// ---------------------------------------------------------------- memos
+
+// Any member may write, viewers included (design.md 4.10). Editing is the
+// author's own memo only; deleting is the author's, or any for an editor.
+// Every case returns to the memo list on the detail page.
+const commentsUrl = (key: string, notice?: string) => `/html/${key}${notice ? `?notice=${notice}` : ""}#comments`;
+const parseId = (s: string | undefined) => (s && /^[1-9][0-9]{0,15}$/.test(s) ? Number(s) : null);
+
+app.post("/html/:key/comments", requireLogin, formLimit, async (c) => {
+  const body = await readForm(c);
+  if (!body) return errorPage(c, "csrf");
+  const found = await findDocument(c, c.req.param("key"));
+  if (!found) return errorPage(c, "notFound");
+  const text = readCommentBody(body["body"]);
+  if (!text) return c.redirect(commentsUrl(found.doc.documentKey, "comment-invalid"), 303);
+  await addComment(c.env.DB, { documentId: found.doc.id, keyId: c.get("user")!.keyId, body: text });
+  return c.redirect(commentsUrl(found.doc.documentKey), 303);
+});
+
+app.post("/html/:key/comments/:id", requireLogin, formLimit, async (c) => {
+  const body = await readForm(c);
+  if (!body) return errorPage(c, "csrf");
+  const found = await findDocument(c, c.req.param("key"));
+  const id = parseId(c.req.param("id"));
+  if (!found || !id) return errorPage(c, "notFound");
+  const text = readCommentBody(body["body"]);
+  if (!text) return c.redirect(commentsUrl(found.doc.documentKey, "comment-invalid"), 303);
+  const ok = await updateComment(c.env.DB, { id, documentId: found.doc.id, keyId: c.get("user")!.keyId, body: text });
+  return c.redirect(commentsUrl(found.doc.documentKey, ok ? undefined : "comment-gone"), 303);
+});
+
+app.post("/html/:key/comments/:id/delete", requireLogin, formLimit, async (c) => {
+  if (!(await readForm(c))) return errorPage(c, "csrf");
+  const found = await findDocument(c, c.req.param("key"));
+  const id = parseId(c.req.param("id"));
+  if (!found || !id) return errorPage(c, "notFound");
+  const ok = await deleteComment(c.env.DB, {
+    id,
+    documentId: found.doc.id,
+    keyId: c.get("user")!.keyId,
+    anyAuthor: found.project.role === "EDITOR",
+  });
+  return c.redirect(commentsUrl(found.doc.documentKey, ok ? undefined : "comment-gone"), 303);
 });
 
 // ---------------------------------------------------------------- storage

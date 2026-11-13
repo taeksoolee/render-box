@@ -24,7 +24,8 @@ const INSTRUCTIONS = [
   "같은 폴더의 이미지·스크립트 파일은 함께 올라가지 않는다. 이미지는 data: URL(base64)이나 https 주소로 HTML 안에 넣는다.",
   "렌더링 화면은 sandbox(출처 없음)로 열린다. 부모와 iframe은 서로의 document에 직접 접근할 수 없으니(contentDocument, contentWindow.document, parent.document 등) 통신은 postMessage로 한다.",
   "HTML은 1MB까지 올릴 수 있다. 더 큰 파일(10MB까지)은 웹 화면이나 REST API(POST /api/v1/html)로 올리도록 안내한다.",
-  "문서 삭제는 웹 화면에서만 할 수 있다.",
+  "팀원이 문서에 남긴 메모(댓글)는 list_comments로 읽는다. \"메모 반영해서 고쳐 줘\" 같은 요청이면 메모를 읽고 update_html로 고친다. add_comment는 사용자가 메모를 남겨 달라고 할 때만 쓴다.",
+  "문서 삭제와 메모 수정·삭제는 웹 화면에서만 할 수 있다.",
 ].join("\n");
 
 type RpcId = string | number | null;
