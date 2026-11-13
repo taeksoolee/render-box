@@ -26,8 +26,10 @@ class Statement {
     return { results: this.exec(), success: true, meta: {} };
   }
 
+  // Like D1, reports how many rows a write changed.
   async run() {
-    return { results: this.exec(), success: true, meta: {} };
+    const { changes } = this.db.prepare(this.sql).run(...(this.params as never[]));
+    return { results: [], success: true, meta: { changes: Number(changes) } };
   }
 
   async first(column?: string) {
