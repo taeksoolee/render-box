@@ -15,8 +15,8 @@ AI로 만든 HTML 프로토타입을 메신저로 주고받는 대신, 파일을
 내 Cloudflare 계정에 직접 배포해서 씁니다. 무료 플랜으로 충분하고, 올린 HTML은 외부 서비스로 나가지 않습니다.
 
 <p>
-  <img src="docs/screenshots/list.png" alt="문서 목록. 위에 저장 공간 사용량, 아래에 제목·링크 수·크기·수정자·수정일과 새 창 버튼이 있는 표" width="400" />
-  <img src="docs/screenshots/detail.png" alt="문서 상세. 새 창에서 보기·렌더링 URL 복사 버튼, 설명, 관련 링크, 정보, 소스, 그리고 v3(현재)·v2·v1 버전 목록" width="400" />
+  <img src="docs/screenshots/list.png" alt="문서 목록. 위에 저장 공간 사용량, 아래에 제목·메모 수·링크 수·크기·수정자·수정일과 새 창 버튼이 있는 표" width="400" />
+  <img src="docs/screenshots/detail.png" alt="문서 상세. 새 창에서 보기·렌더링 URL 복사 버튼, 설명, 관련 링크, 정보, 소스, 메모 3개와 입력칸, 그리고 v3(현재)·v2·v1 버전 목록" width="400" />
 </p>
 
 ## 기능
@@ -155,7 +155,7 @@ pnpm dev                # 렌더링 :8788 → 관리 :8787 → API :8789 순서�
 | `pnpm typecheck` | 타입 검사 |
 | `pnpm check:prod-mode` | 관리·렌더링 Worker를 `DEV_MODE` 없이 로컬에서 띄워 운영에서만 도는 경로(해시 정적 파일, HSTS, https 전용 CSP)를 확인. CI에서도 돕니다 |
 | `RB_EDITOR_KEY=… RB_VIEWER_KEY=… pnpm test:e2e` | 브라우저 테스트: Chromium·Firefox·WebKit. `pnpm dev` 실행 중이어야 하고, 처음 한 번 `pnpm exec playwright install chromium firefox webkit` |
-| `RB_EDITOR_KEY=… pnpm screenshots` | README 스크린샷 다시 찍기 (새 로컬 상태에서) |
+| `RB_EDITOR_KEY=… RB_VIEWER_KEY=… pnpm screenshots` | README·사용 안내 스크린샷 다시 찍기 (새 로컬 상태에서. 메모는 열람자 키 이름으로 남음) |
 
 브라우저 테스트는 한 번에 하나씩 실행합니다. 로컬에서는 여러 Worker가 같은 SQLite 파일을 함께 쓰므로, 병렬로 돌리면 D1이 간헐적으로 `Failed to get session commit token` 오류를 냅니다. 운영 D1에는 해당하지 않습니다.
 

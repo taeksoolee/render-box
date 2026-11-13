@@ -1,7 +1,8 @@
-// Regenerates docs/screenshots/*.png for the README from a local instance with
-// sample documents. Needs `pnpm dev` running and an editor key:
+// Regenerates docs/screenshots/*.png for the README and the guide from a
+// local instance with sample documents. Needs `pnpm dev` running, an editor
+// key, and a viewer key for the memos (another person's name on them):
 //
-//   RB_EDITOR_KEY=rb_... pnpm screenshots
+//   RB_EDITOR_KEY=rb_... RB_VIEWER_KEY=rb_... pnpm screenshots
 //
 // It adds sample documents to the local D1; run it on a fresh local state.
 import { chromium } from "@playwright/test";
@@ -10,8 +11,18 @@ const APP = "http://app.localhost:8787";
 const API = "http://api.localhost:8789/api/v1";
 const OUT = new URL("../docs/screenshots/", import.meta.url);
 const key = process.env.RB_EDITOR_KEY ?? "";
-if (!key) throw new Error("RB_EDITOR_KEY is not set");
+const viewerKey = process.env.RB_VIEWER_KEY ?? "";
+if (!key || !viewerKey) throw new Error("RB_EDITOR_KEY and RB_VIEWER_KEY must be set");
 const auth = { Authorization: `Bearer ${key}` };
+
+async function memo(documentKey: string, body: string, as = viewerKey) {
+  const res = await fetch(`${API}/html/${documentKey}/comments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${as}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) throw new Error(`memo: ${res.status}`);
+}
 
 const page = (title: string, body: string) =>
   `<!DOCTYPE html><html lang="ko"><meta charset="utf-8"><title>${title}</title><body style="font-family:system-ui">${body}</body></html>`;
@@ -46,7 +57,10 @@ const signup = await upload("회원가입 플로우 v3", page("회원가입", "<
   link: ["기획서|https://www.notion.so/", "https://www.figma.com/", "Jira 티켓|https://example.atlassian.net/browse/SIGN-42"],
 });
 await replace(signup, page("회원가입", "<form>v2</form>".repeat(2600)));
+await memo(signup, "인증 메일을 기다리는 동안 보여 줄 화면이 없어요.\n'메일을 보냈습니다' 안내가 있으면 좋겠습니다.");
 await replace(signup, page("회원가입", "<form>v3</form>".repeat(2400)));
+await memo(signup, "v3에 안내 화면 넣었습니다. 문구 확인 부탁드려요.", key);
+await memo(signup, "확인했습니다. '다음' 버튼만 '인증 메일 받기'로 바꾸면 될 것 같아요.");
 
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1200, height: 820 }, deviceScaleFactor: 2, locale: "ko-KR" });
@@ -59,8 +73,9 @@ await tab.waitForURL(`${APP}/html`);
 await tab.screenshot({ path: new URL("list.png", OUT).pathname });
 await tab.goto(`${APP}/html/${signup}`);
 await tab.screenshot({ path: new URL("detail.png", OUT).pathname, fullPage: true });
+await tab.locator("#comments").screenshot({ path: new URL("memo.png", OUT).pathname });
 await tab.goto(`${APP}/html/new`);
 await tab.screenshot({ path: new URL("new.png", OUT).pathname });
 
 await browser.close();
-console.log(`wrote ${new URL(".", OUT).pathname}{list,detail,new}.png`);
+console.log(`wrote ${new URL(".", OUT).pathname}{list,detail,memo,new}.png`);
